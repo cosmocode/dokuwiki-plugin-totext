@@ -384,6 +384,414 @@ XML;
     }
 
     /**
+     * Build a DOCX that carries header and footer parts in addition to the body.
+     *
+     * Exercises the DocxExtractor's word/header*.xml and word/footer*.xml scan,
+     * which the basic buildDocx() fixture does not contain.
+     *
+     * @param string $outPath destination path
+     * @return void
+     */
+    public static function buildDocxWithHeaderFooter($outPath)
+    {
+        $contentTypes = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+    <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+    <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
+</Types>
+XML;
+        $rels = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>
+XML;
+        $document = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:body>
+        <w:p><w:r><w:t>Body paragraph text</w:t></w:r></w:p>
+    </w:body>
+</w:document>
+XML;
+        $header = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:p><w:r><w:t>Document header text</w:t></w:r></w:p>
+</w:hdr>
+XML;
+        $footer = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:p><w:r><w:t>Page footer text</w:t></w:r></w:p>
+</w:ftr>
+XML;
+        self::writeZip($outPath, [
+            '[Content_Types].xml' => $contentTypes,
+            '_rels/.rels' => $rels,
+            'word/document.xml' => $document,
+            'word/header1.xml' => $header,
+            'word/footer1.xml' => $footer,
+        ]);
+    }
+
+    /**
+     * Build a single-slide PPTX that carries a corresponding notes slide.
+     *
+     * Exercises the PptxExtractor notes path (notesSlideN.xml -> "--- Notes ---"),
+     * which the two-slide buildPptx() fixture does not contain.
+     *
+     * @param string $outPath destination path
+     * @return void
+     */
+    public static function buildPptxWithNotes($outPath)
+    {
+        $contentTypes = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+    <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+    <Override PartName="/ppt/notesSlides/notesSlide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>
+</Types>
+XML;
+        $rels = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>
+XML;
+        $presentation = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+    <p:sldIdLst>
+        <p:sldId id="256" r:id="rId1"/>
+    </p:sldIdLst>
+</p:presentation>
+XML;
+        $presRels = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+</Relationships>
+XML;
+        $slide = self::pptxSlideXml('Slide with notes', 'Visible slide body');
+        $notes = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:notes xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+         xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+    <p:cSld><p:spTree>
+        <p:sp><p:txBody>
+            <a:p><a:r><a:t>These are the speaker notes.</a:t></a:r></a:p>
+        </p:txBody></p:sp>
+    </p:spTree></p:cSld>
+</p:notes>
+XML;
+        self::writeZip($outPath, [
+            '[Content_Types].xml' => $contentTypes,
+            '_rels/.rels' => $rels,
+            'ppt/presentation.xml' => $presentation,
+            'ppt/_rels/presentation.xml.rels' => $presRels,
+            'ppt/slides/slide1.xml' => $slide,
+            'ppt/notesSlides/notesSlide1.xml' => $notes,
+        ]);
+    }
+
+    /**
+     * Build a multi-sheet XLSX whose tab order differs from the worksheet file
+     * numbering, wired through xl/_rels/workbook.xml.rels.
+     *
+     * The first tab ("Beta") is stored in sheet2.xml and the second tab
+     * ("Alpha") in sheet1.xml, so a correct extractor must resolve names to
+     * files via the relationships and emit them in workbook (tab) order.
+     *
+     * @param string $outPath destination path
+     * @return void
+     */
+    public static function buildMultiSheetXlsx($outPath)
+    {
+        $contentTypes = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+    <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+    <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>
+XML;
+        $rels = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>
+XML;
+        // Tab order: Beta first (rId2 -> sheet2.xml), then Alpha (rId1 -> sheet1.xml).
+        $workbook = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+    <sheets>
+        <sheet name="Beta" sheetId="2" r:id="rId2"/>
+        <sheet name="Alpha" sheetId="1" r:id="rId1"/>
+    </sheets>
+</workbook>
+XML;
+        $workbookRels = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+</Relationships>
+XML;
+        $sheet1 = self::xlsxInlineSheet('AlphaCell');   // Alpha tab content
+        $sheet2 = self::xlsxInlineSheet('BetaCell');    // Beta tab content
+        self::writeZip($outPath, [
+            '[Content_Types].xml' => $contentTypes,
+            '_rels/.rels' => $rels,
+            'xl/workbook.xml' => $workbook,
+            'xl/_rels/workbook.xml.rels' => $workbookRels,
+            'xl/worksheets/sheet1.xml' => $sheet1,
+            'xl/worksheets/sheet2.xml' => $sheet2,
+        ]);
+    }
+
+    /**
+     * Build an XLSX with no workbook.xml so sheet names fall back to "SheetN".
+     *
+     * @param string $outPath destination path
+     * @return void
+     */
+    public static function buildXlsxNoWorkbook($outPath)
+    {
+        $contentTypes = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>
+XML;
+        self::writeZip($outPath, [
+            '[Content_Types].xml' => $contentTypes,
+            'xl/worksheets/sheet1.xml' => self::xlsxInlineSheet('Orphan'),
+        ]);
+    }
+
+    /**
+     * Build an XLSX that is a valid ZIP but contains no worksheets.
+     *
+     * @param string $outPath destination path
+     * @return void
+     */
+    public static function buildXlsxNoWorksheets($outPath)
+    {
+        $workbook = <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets/></workbook>
+XML;
+        self::writeZip($outPath, ['xl/workbook.xml' => $workbook]);
+    }
+
+    /**
+     * Build a single-cell inline-string worksheet body.
+     *
+     * @param string $value the cell value
+     * @return string worksheet XML
+     */
+    private static function xlsxInlineSheet($value)
+    {
+        $esc = htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        return <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+    <sheetData>
+        <row r="1"><c r="A1" t="inlineStr"><is><t>$esc</t></is></c></row>
+    </sheetData>
+</worksheet>
+XML;
+    }
+
+    /**
+     * Build an ODS that exercises repeated columns, covered cells, multi-paragraph
+     * cells, in-cell tabs and the unnamed-sheet name fallback.
+     *
+     * @param string $outPath destination path
+     * @return void
+     */
+    public static function buildOdsRich($outPath)
+    {
+        $content = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+    <office:body><office:spreadsheet>
+        <table:table table:name="Edge">
+            <table:table-row>
+                <table:table-cell table:number-columns-repeated="3"><text:p>A</text:p></table:table-cell>
+                <table:table-cell><text:p>B</text:p></table:table-cell>
+            </table:table-row>
+            <table:table-row>
+                <table:table-cell><text:p>Line1</text:p><text:p>Line2</text:p></table:table-cell>
+                <table:table-cell table:number-columns-repeated="5"/>
+                <table:table-cell><text:p>End</text:p></table:table-cell>
+            </table:table-row>
+            <table:table-row>
+                <table:covered-table-cell><text:p>Merged</text:p></table:covered-table-cell>
+                <table:table-cell><text:p>X<text:tab/>Y</text:p></table:table-cell>
+            </table:table-row>
+        </table:table>
+        <table:table>
+            <table:table-row>
+                <table:table-cell><text:p>Unnamed sheet</text:p></table:table-cell>
+            </table:table-row>
+        </table:table>
+    </office:spreadsheet></office:body>
+</office:document-content>
+XML;
+        self::writeOdf($outPath, 'application/vnd.oasis.opendocument.spreadsheet', $content);
+    }
+
+    /**
+     * Build an ODS whose single text cell declares a huge column repeat,
+     * to verify the MAX_REPEAT safety cap.
+     *
+     * @param string $outPath destination path
+     * @param int $repeat the declared number-columns-repeated value
+     * @return void
+     */
+    public static function buildOdsHugeRepeat($outPath, $repeat = 100000)
+    {
+        $content = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+    <office:body><office:spreadsheet>
+        <table:table table:name="Huge">
+            <table:table-row>
+                <table:table-cell table:number-columns-repeated="$repeat"><text:p>Z</text:p></table:table-cell>
+            </table:table-row>
+        </table:table>
+    </office:spreadsheet></office:body>
+</office:document-content>
+XML;
+        self::writeOdf($outPath, 'application/vnd.oasis.opendocument.spreadsheet', $content);
+    }
+
+    /**
+     * Build a minimal TIFF carrying EXIF metadata, including a Windows "XP"
+     * tag stored as UTF-16LE to exercise the decoder.
+     *
+     * @param string $outPath destination path
+     * @return void
+     */
+    public static function buildTiffWithExif($outPath)
+    {
+        file_put_contents($outPath, self::tiffWithExifBytes());
+    }
+
+    /**
+     * Write an arbitrary ZIP archive from a map of internal path => content.
+     *
+     * Exposed so tests can compose deliberately incomplete containers (e.g. a
+     * valid ZIP that is missing its main content part) for error-path coverage.
+     *
+     * @param string $outPath destination path
+     * @param array<string, string> $entries internal path => content
+     * @return void
+     */
+    public static function zip($outPath, array $entries)
+    {
+        self::writeZip($outPath, $entries);
+    }
+
+    /**
+     * Construct the bytes of a baseline little-endian TIFF with a handful of
+     * EXIF text tags (ImageDescription, Artist, Copyright) and an XPTitle tag
+     * encoded as UTF-16LE, plus the minimal image tags PHP's exif reader needs.
+     *
+     * @return string the TIFF byte string
+     */
+    private static function tiffWithExifBytes()
+    {
+        // 1x1 white pixel strip
+        $pixels = "\xFF\xFF\xFF";
+        $imageDescription = "A TIFF caption\0";
+        $artist = "Tina Tiff\0";
+        $copyright = "Copyright TIFFCorp\0";
+        // XPTitle: UTF-16LE bytes for "XP Title" with trailing NUL
+        $xpTitle = mb_convert_encoding("XP Title\0", 'UTF-16LE', 'UTF-8');
+
+        // We lay out: header (8) + IFD, then the out-of-line value blobs.
+        // Tag entries (each 12 bytes). type 2 = ASCII, type 1 = BYTE, 3 = SHORT, 4 = LONG.
+        $entries = [
+            // tag,   type, count,                value-or-offset (filled later if offset)
+            [0x0100, 3, 1, 1],                       // ImageWidth = 1
+            [0x0101, 3, 1, 1],                       // ImageLength = 1
+            [0x0102, 3, 1, 8],                       // BitsPerSample = 8
+            [0x0103, 3, 1, 1],                       // Compression = none
+            [0x0106, 3, 1, 2],                       // PhotometricInterpretation = RGB
+            [0x010E, 2, strlen($imageDescription), null, $imageDescription], // ImageDescription
+            [0x0111, 4, 1, null, $pixels],           // StripOffsets -> pixel data
+            [0x0115, 3, 1, 3],                       // SamplesPerPixel = 3
+            [0x0116, 3, 1, 1],                       // RowsPerStrip = 1
+            [0x0117, 4, 1, strlen($pixels)],         // StripByteCounts
+            [0x013B, 2, strlen($artist), null, $artist],     // Artist
+            [0x8298, 2, strlen($copyright), null, $copyright], // Copyright
+            [0x9C9B, 1, strlen($xpTitle), null, $xpTitle],   // XPTitle (BYTE/UTF-16LE)
+        ];
+
+        $count = count($entries);
+        // IFD starts right after the 8-byte header.
+        $ifdOffset = 8;
+        // IFD size: 2 (count) + 12*N + 4 (next-IFD offset).
+        $ifdSize = 2 + 12 * $count + 4;
+        // Out-of-line blobs begin after the IFD.
+        $blobBase = $ifdOffset + $ifdSize;
+
+        // First pass: assign offsets to any out-of-line blob (value that does
+        // not fit in 4 bytes, or that we explicitly stored as a blob).
+        $blobs = '';
+        foreach ($entries as &$e) {
+            $blob = $e[4] ?? null;
+            if ($blob !== null) {
+                $e[3] = $blobBase + strlen($blobs);
+                $blobs .= $blob;
+            }
+        }
+        unset($e);
+
+        // Header: "II", 42, offset to IFD0.
+        $out = "II" . pack('v', 42) . pack('V', $ifdOffset);
+        // IFD entry count.
+        $out .= pack('v', $count);
+        foreach ($entries as $e) {
+            [$tag, $type, $cnt] = $e;
+            $value = $e[3];
+            $out .= pack('v', $tag) . pack('v', $type) . pack('V', $cnt);
+            // SHORT values are written left-aligned in the 4-byte value field.
+            if ($type === 3 && ($e[4] ?? null) === null) {
+                $out .= pack('v', $value) . "\0\0";
+            } else {
+                $out .= pack('V', $value);
+            }
+        }
+        $out .= pack('V', 0); // no next IFD
+        $out .= $blobs;
+        return $out;
+    }
+
+    /**
      * Write an OpenDocument package (mimetype + content.xml) as a ZIP.
      *
      * @param string $outPath destination path

@@ -72,6 +72,39 @@ DokuWiki provides useful helper methods for testing:
 
 Each test run will provide a fresh DokuWiki instance in a temporary directory via the default setupBeforeClass methods.
 
+### Test fixtures
+
+Two kinds of fixtures are used:
+
+* **Synthetic, hand-built** — `_test/FixtureBuilder.php` builds tiny valid
+  containers on the fly (real ZIPs via `splitbrain\PHPArchive\Zip`, a real PDF
+  byte stream, a GD-encoded JPEG with IPTC, a hand-packed baseline TIFF with
+  EXIF incl. a UTF-16LE `XPTitle`). These are deterministic and exercise
+  specific edge cases (header/footer parts, speaker notes, repeated columns,
+  `MAX_REPEAT`, sheet-name fallbacks, missing-part error paths). `zip()` is
+  exposed for composing deliberately broken containers.
+* **Real-world** — `_test/data/sample.*` are genuine LibreOffice outputs
+  (docx/xlsx/pptx/odt/ods/odp/pdf) sharing one source text; covered by
+  `SampleFilesTest`. They are original content (no licensing entanglement) and
+  `_test` is `export-ignore`d so they never ship in release tarballs. Regenerate
+  with LibreOffice headless: author HTML/CSV/flat-`.fodp` sources, convert to a
+  native ODF first, then export the OOXML/PDF variant
+  (`soffice -env:UserInstallation=file:///tmp/lo --headless --convert-to <fmt>`).
+
+### Format-specific gotchas learned
+
+* **XLSX sheet order/names** must be resolved through `xl/workbook.xml` +
+  `xl/_rels/workbook.xml.rels` (name → r:id → worksheet file). Worksheet file
+  numbering does NOT have to match tab order, so pairing sorted filenames with
+  names positionally mismatches them. `XlsxExtractor` follows the relationships
+  and only falls back to positional/`SheetN` naming when the workbook or its
+  rels are absent.
+* **EXIF "XP" tags** (TIFF): PHP's `exif_read_data` already decodes the Windows
+  XP tags and exposes them in a `WINXP` section under the short names
+  `Title`/`Comment`/`Author`/`Keywords`/`Subject` (UTF-8) — NOT as `XPTitle`
+  etc. `ImageExtractor::EXIF_FIELDS` lists the short names first and keeps the
+  `XP*` raw names as a cross-version fallback.
+
 **Important:** Test classes that need the plugin must set `protected $pluginsEnabled = ['totext'];` to enable it in the test environment.
 
 **Important:** `setUp()` and `tearDown()` methods must be `public` (not `protected`) to match the `DokuWikiTest` base class.

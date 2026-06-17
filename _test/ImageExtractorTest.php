@@ -2,6 +2,7 @@
 
 namespace dokuwiki\plugin\totext\test;
 
+use dokuwiki\plugin\totext\Exception\ExtractionException;
 use dokuwiki\plugin\totext\Extractor\ImageExtractor;
 use DokuWikiTest;
 
@@ -44,6 +45,7 @@ class ImageExtractorTest extends DokuWikiTest
         $this->assertStringContainsString('A caption describing the image', $text);
         $this->assertStringContainsString('Jane Photographer', $text);
         $this->assertStringContainsString('Copyright ACME', $text);
+        $this->assertStringContainsString('alpha beta', $text);
     }
 
     public function testEmitsLabelledLines()
@@ -53,6 +55,7 @@ class ImageExtractorTest extends DokuWikiTest
         $text = (new ImageExtractor())->extract($path);
         $this->assertStringContainsString('Title: Test Title', $text);
         $this->assertStringContainsString('Author: Jane Photographer', $text);
+        $this->assertStringContainsString('Keywords: alpha beta', $text);
     }
 
     public function testImageWithoutMetadataReturnsEmptyString()
@@ -65,12 +68,58 @@ class ImageExtractorTest extends DokuWikiTest
         $this->assertSame('', $text);
     }
 
-    public function testSupports()
+    public function testExtractsTiffExifMetadata()
     {
-        $e = new ImageExtractor();
-        $this->assertTrue($e->supports('foo.jpg'));
-        $this->assertTrue($e->supports('foo.jpeg'));
-        $this->assertTrue($e->supports('foo.tiff'));
-        $this->assertFalse($e->supports('foo.png'));
+        if (!function_exists('exif_read_data')) {
+            $this->markTestSkipped('exif extension required to read TIFF metadata');
+        }
+        $path = $this->tmp . '/sample.tiff';
+        FixtureBuilder::buildTiffWithExif($path);
+        $text = (new ImageExtractor())->extract($path);
+        $this->assertStringContainsString('Caption: A TIFF caption', $text);
+        $this->assertStringContainsString('Author: Tina Tiff', $text);
+        $this->assertStringContainsString('Copyright: Copyright TIFFCorp', $text);
+    }
+
+    public function testDecodesWindowsXpUtf16Tag()
+    {
+        if (!function_exists('exif_read_data')) {
+            $this->markTestSkipped('exif extension required to read TIFF metadata');
+        }
+        $path = $this->tmp . '/sample.tiff';
+        FixtureBuilder::buildTiffWithExif($path);
+        $text = (new ImageExtractor())->extract($path);
+        // XPTitle is stored as UTF-16LE; it must surface as a clean UTF-8 title
+        $this->assertStringContainsString('Title: XP Title', $text);
+    }
+
+    public function testMissingFileThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new ImageExtractor())->extract($this->tmp . '/nope.jpg');
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public function provideSupports(): array
+    {
+        return [
+            'jpg' => ['foo.jpg', true],
+            'jpeg' => ['foo.jpeg', true],
+            'tif' => ['foo.tif', true],
+            'tiff' => ['foo.tiff', true],
+            'uppercase' => ['foo.JPG', true],
+            'png' => ['foo.png', false],
+            'gif' => ['foo.gif', false],
+        ];
+    }
+
+    /**
+     * @dataProvider provideSupports
+     */
+    public function testSupports(string $path, bool $expected)
+    {
+        $this->assertSame($expected, (new ImageExtractor())->supports($path));
     }
 }

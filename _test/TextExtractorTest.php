@@ -58,18 +58,53 @@ class TextExtractorTest extends DokuWikiTest
         $this->assertSame('café', $text);
     }
 
+    public function testReplacesInvalidBytes()
+    {
+        $path = $this->tmp . '/bad.txt';
+        // a lone 0xFF byte is invalid in both UTF-8 and (after Latin-1 conversion)
+        // must not survive as a raw byte in the output
+        FixtureBuilder::buildTextFile($path, "ok\xFFok");
+        $text = (new TextExtractor())->extract($path);
+        $this->assertStringContainsString('ok', $text);
+        $this->assertStringNotContainsString("\xFF", $text);
+    }
+
+    public function testEmptyFileYieldsEmptyString()
+    {
+        $path = $this->tmp . '/empty.txt';
+        FixtureBuilder::buildTextFile($path, '');
+        $this->assertSame('', (new TextExtractor())->extract($path));
+    }
+
     public function testMissingFileThrows()
     {
         $this->expectException(ExtractionException::class);
         (new TextExtractor())->extract($this->tmp . '/nope.txt');
     }
 
-    public function testSupports()
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public function provideSupports(): array
     {
-        $e = new TextExtractor();
-        $this->assertTrue($e->supports('foo.txt'));
-        $this->assertTrue($e->supports('foo.md'));
-        $this->assertTrue($e->supports('foo.csv'));
-        $this->assertFalse($e->supports('foo.pdf'));
+        return [
+            'txt' => ['foo.txt', true],
+            'md' => ['foo.md', true],
+            'markdown' => ['foo.markdown', true],
+            'csv' => ['foo.csv', true],
+            'log' => ['foo.log', true],
+            'text' => ['foo.text', true],
+            'uppercase' => ['foo.TXT', true],
+            'pdf' => ['foo.pdf', false],
+            'docx' => ['foo.docx', false],
+        ];
+    }
+
+    /**
+     * @dataProvider provideSupports
+     */
+    public function testSupports(string $path, bool $expected)
+    {
+        $this->assertSame($expected, (new TextExtractor())->supports($path));
     }
 }

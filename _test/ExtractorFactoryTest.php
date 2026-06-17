@@ -7,6 +7,8 @@ use dokuwiki\plugin\totext\Exception\UnsupportedFormatException;
 use dokuwiki\plugin\totext\Extractor\DocxExtractor;
 use dokuwiki\plugin\totext\Extractor\ExtractorFactory;
 use dokuwiki\plugin\totext\Extractor\ImageExtractor;
+use dokuwiki\plugin\totext\Extractor\OdpExtractor;
+use dokuwiki\plugin\totext\Extractor\OdsExtractor;
 use dokuwiki\plugin\totext\Extractor\OdtExtractor;
 use dokuwiki\plugin\totext\Extractor\PdfExtractor;
 use dokuwiki\plugin\totext\Extractor\PptxExtractor;
@@ -49,53 +51,122 @@ class ExtractorFactoryTest extends DokuWikiTest
         parent::tearDown();
     }
 
-    public function testForFileRoutesByExtension()
+    /**
+     * Extension => expected extractor class.
+     *
+     * @return array<string, array{0: string, 1: class-string}>
+     */
+    public function provideRouting(): array
     {
-        $this->assertInstanceOf(DocxExtractor::class, ExtractorFactory::forFile('foo.docx'));
-        $this->assertInstanceOf(XlsxExtractor::class, ExtractorFactory::forFile('foo.xlsx'));
-        $this->assertInstanceOf(PptxExtractor::class, ExtractorFactory::forFile('foo.pptx'));
-        $this->assertInstanceOf(PdfExtractor::class, ExtractorFactory::forFile('foo.pdf'));
-        $this->assertInstanceOf(OdtExtractor::class, ExtractorFactory::forFile('foo.odt'));
-        $this->assertInstanceOf(TextExtractor::class, ExtractorFactory::forFile('foo.txt'));
-        $this->assertInstanceOf(TextExtractor::class, ExtractorFactory::forFile('foo.md'));
-        $this->assertInstanceOf(ImageExtractor::class, ExtractorFactory::forFile('foo.jpg'));
-        $this->assertInstanceOf(ImageExtractor::class, ExtractorFactory::forFile('foo.tiff'));
+        return [
+            'docx' => ['foo.docx', DocxExtractor::class],
+            'xlsx' => ['foo.xlsx', XlsxExtractor::class],
+            'pptx' => ['foo.pptx', PptxExtractor::class],
+            'pdf' => ['foo.pdf', PdfExtractor::class],
+            'odt' => ['foo.odt', OdtExtractor::class],
+            'ods' => ['foo.ods', OdsExtractor::class],
+            'odp' => ['foo.odp', OdpExtractor::class],
+            'txt' => ['foo.txt', TextExtractor::class],
+            'md' => ['foo.md', TextExtractor::class],
+            'markdown' => ['foo.markdown', TextExtractor::class],
+            'log' => ['foo.log', TextExtractor::class],
+            'jpg' => ['foo.jpg', ImageExtractor::class],
+            'jpeg' => ['foo.jpeg', ImageExtractor::class],
+            'tiff' => ['foo.tiff', ImageExtractor::class],
+            'uppercase docx' => ['foo.DOCX', DocxExtractor::class],
+            'uppercase pdf' => ['FOO.PDF', PdfExtractor::class],
+            'path with dirs' => ['/var/data/My File.ODT', OdtExtractor::class],
+        ];
     }
 
-    public function testForFileIsCaseInsensitive()
+    /**
+     * @dataProvider provideRouting
+     */
+    public function testForFileRoutesByExtension(string $path, string $expected)
     {
-        $this->assertInstanceOf(DocxExtractor::class, ExtractorFactory::forFile('foo.DOCX'));
-        $this->assertInstanceOf(PdfExtractor::class, ExtractorFactory::forFile('FOO.PDF'));
+        $this->assertInstanceOf($expected, ExtractorFactory::forFile($path));
     }
 
-    public function testUnknownExtensionThrows()
+    /**
+     * Names that must be rejected as unsupported.
+     *
+     * @return array<string, array{0: string}>
+     */
+    public function provideUnsupported(): array
+    {
+        return [
+            'unknown extension' => ['foo.unknownext'],
+            'no extension' => ['/tmp/somefile'],
+            'legacy doc' => ['legacy.doc'],
+            'legacy xls' => ['legacy.xls'],
+            'legacy ppt' => ['legacy.ppt'],
+            'png image' => ['foo.png'],
+        ];
+    }
+
+    /**
+     * @dataProvider provideUnsupported
+     */
+    public function testUnsupportedExtensionThrows(string $path)
     {
         $this->expectException(UnsupportedFormatException::class);
-        ExtractorFactory::forFile('foo.unknownext');
+        ExtractorFactory::forFile($path);
     }
 
-    public function testNoExtensionThrows()
+    /**
+     * Every advertised extension must route to an extractor that accepts it.
+     *
+     * Guards against drift between supportedExtensions() and the forFile() match
+     * arms, which are maintained as two separate hand-written lists.
+     *
+     * @return array<string, array{0: string}>
+     */
+    public function provideSupportedExtensions(): array
     {
-        $this->expectException(UnsupportedFormatException::class);
-        ExtractorFactory::forFile('/tmp/somefile');
+        $out = [];
+        foreach (ExtractorFactory::supportedExtensions() as $ext) {
+            $out[$ext] = [$ext];
+        }
+        return $out;
     }
 
-    public function testLegacyDocFormatIsUnsupported()
+    /**
+     * @dataProvider provideSupportedExtensions
+     */
+    public function testEveryAdvertisedExtensionRoutesAndIsAccepted(string $ext)
     {
-        $this->expectException(UnsupportedFormatException::class);
-        ExtractorFactory::forFile('legacy.doc');
+        $extractor = ExtractorFactory::forFile('file.' . $ext);
+        $this->assertTrue(
+            $extractor->supports('file.' . $ext),
+            "$ext routes to " . get_class($extractor) . " but supports() rejects it",
+        );
     }
 
-    public function testExtractConvenienceRoundtripsAllFormats()
+    /**
+     * Convenience extract() must round-trip every container format.
+     *
+     * @return array<string, array{0: string, 1: string}> [extension, expected substring]
+     */
+    public function provideRoundtrip(): array
     {
-        $this->assertStringContainsString('Hello world from DOCX', ExtractorFactory::extract($this->tmp . '/a.docx'));
-        $this->assertStringContainsString('Hello', ExtractorFactory::extract($this->tmp . '/a.xlsx'));
-        $this->assertStringContainsString('First slide title', ExtractorFactory::extract($this->tmp . '/a.pptx'));
-        $this->assertStringContainsString('Round trip PDF', ExtractorFactory::extract($this->tmp . '/a.pdf'));
-        $this->assertStringContainsString('Hello world from ODT', ExtractorFactory::extract($this->tmp . '/a.odt'));
-        $this->assertStringContainsString('Hello', ExtractorFactory::extract($this->tmp . '/a.ods'));
-        $this->assertStringContainsString('First slide title', ExtractorFactory::extract($this->tmp . '/a.odp'));
-        $this->assertStringContainsString('Plain text file', ExtractorFactory::extract($this->tmp . '/a.txt'));
+        return [
+            'docx' => ['a.docx', 'Hello world from DOCX'],
+            'xlsx' => ['a.xlsx', 'Hello'],
+            'pptx' => ['a.pptx', 'First slide title'],
+            'pdf' => ['a.pdf', 'Round trip PDF'],
+            'odt' => ['a.odt', 'Hello world from ODT'],
+            'ods' => ['a.ods', 'Hello'],
+            'odp' => ['a.odp', 'First slide title'],
+            'txt' => ['a.txt', 'Plain text file'],
+        ];
+    }
+
+    /**
+     * @dataProvider provideRoundtrip
+     */
+    public function testExtractConvenienceRoundtripsFormat(string $file, string $needle)
+    {
+        $this->assertStringContainsString($needle, ExtractorFactory::extract($this->tmp . '/' . $file));
     }
 
     public function testCorruptDocxRaisesExtractionException()

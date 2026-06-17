@@ -2,6 +2,7 @@
 
 namespace dokuwiki\plugin\totext\test;
 
+use dokuwiki\plugin\totext\Exception\ExtractionException;
 use dokuwiki\plugin\totext\Extractor\DocxExtractor;
 use DokuWikiTest;
 
@@ -61,11 +62,49 @@ class DocxExtractorTest extends DokuWikiTest
         $this->assertSame('Hello world from DOCX', $lines[0]);
     }
 
-    public function testSupports()
+    public function testExtractsHeaderAndFooterText()
     {
-        $e = new DocxExtractor();
-        $this->assertTrue($e->supports('foo.docx'));
-        $this->assertTrue($e->supports('foo.DOCX'));
-        $this->assertFalse($e->supports('foo.pdf'));
+        $path = $this->tmp . '/headfoot.docx';
+        FixtureBuilder::buildDocxWithHeaderFooter($path);
+        $text = (new DocxExtractor())->extract($path);
+        $this->assertStringContainsString('Body paragraph text', $text);
+        $this->assertStringContainsString('Document header text', $text);
+        $this->assertStringContainsString('Page footer text', $text);
+    }
+
+    public function testMissingDocumentPartThrows()
+    {
+        $path = $this->tmp . '/nodoc.docx';
+        // a valid ZIP, but without word/document.xml
+        FixtureBuilder::zip($path, ['[Content_Types].xml' => '<Types/>']);
+        $this->expectException(ExtractionException::class);
+        (new DocxExtractor())->extract($path);
+    }
+
+    public function testMissingFileThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new DocxExtractor())->extract($this->tmp . '/nope.docx');
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public function provideSupports(): array
+    {
+        return [
+            'docx' => ['foo.docx', true],
+            'uppercase' => ['foo.DOCX', true],
+            'pdf' => ['foo.pdf', false],
+            'legacy doc' => ['foo.doc', false],
+        ];
+    }
+
+    /**
+     * @dataProvider provideSupports
+     */
+    public function testSupports(string $path, bool $expected)
+    {
+        $this->assertSame($expected, (new DocxExtractor())->supports($path));
     }
 }

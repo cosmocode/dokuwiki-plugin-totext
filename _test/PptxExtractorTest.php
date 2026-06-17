@@ -2,6 +2,7 @@
 
 namespace dokuwiki\plugin\totext\test;
 
+use dokuwiki\plugin\totext\Exception\ExtractionException;
 use dokuwiki\plugin\totext\Extractor\PptxExtractor;
 use DokuWikiTest;
 
@@ -63,10 +64,48 @@ class PptxExtractorTest extends DokuWikiTest
         $this->assertStringContainsString('=== Slide 2 ===', $text);
     }
 
-    public function testSupports()
+    public function testExtractsSpeakerNotes()
     {
-        $e = new PptxExtractor();
-        $this->assertTrue($e->supports('foo.pptx'));
-        $this->assertFalse($e->supports('foo.xlsx'));
+        $path = $this->tmp . '/notes.pptx';
+        FixtureBuilder::buildPptxWithNotes($path);
+        $text = (new PptxExtractor())->extract($path);
+        $this->assertStringContainsString('Visible slide body', $text);
+        $this->assertStringContainsString('--- Notes ---', $text);
+        $this->assertStringContainsString('These are the speaker notes.', $text);
+        // notes follow the slide they belong to
+        $this->assertLessThan(
+            strpos($text, 'These are the speaker notes.'),
+            strpos($text, 'Visible slide body'),
+        );
+    }
+
+    public function testNoSlidesThrows()
+    {
+        // a valid ZIP with neither presentation parts nor slide parts
+        $path = $this->tmp . '/empty.pptx';
+        FixtureBuilder::zip($path, ['[Content_Types].xml' => '<Types/>']);
+        $this->expectException(ExtractionException::class);
+        (new PptxExtractor())->extract($path);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public function provideSupports(): array
+    {
+        return [
+            'pptx' => ['foo.pptx', true],
+            'uppercase' => ['foo.PPTX', true],
+            'xlsx' => ['foo.xlsx', false],
+            'legacy ppt' => ['foo.ppt', false],
+        ];
+    }
+
+    /**
+     * @dataProvider provideSupports
+     */
+    public function testSupports(string $path, bool $expected)
+    {
+        $this->assertSame($expected, (new PptxExtractor())->supports($path));
     }
 }

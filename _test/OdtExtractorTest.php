@@ -2,6 +2,7 @@
 
 namespace dokuwiki\plugin\totext\test;
 
+use dokuwiki\plugin\totext\Exception\ExtractionException;
 use dokuwiki\plugin\totext\Extractor\OdtExtractor;
 use DokuWikiTest;
 
@@ -59,10 +60,37 @@ class OdtExtractorTest extends DokuWikiTest
         $this->assertSame('Hello world from ODT', $lines[0]);
     }
 
-    public function testSupports()
+    public function testMissingContentThrows()
     {
-        $e = new OdtExtractor();
-        $this->assertTrue($e->supports('foo.odt'));
-        $this->assertFalse($e->supports('foo.docx'));
+        $path = $this->tmp . '/nocontent.odt';
+        FixtureBuilder::zip($path, ['mimetype' => 'application/vnd.oasis.opendocument.text']);
+        $this->expectException(ExtractionException::class);
+        (new OdtExtractor())->extract($path);
+    }
+
+    public function testMissingFileThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new OdtExtractor())->extract($this->tmp . '/nope.odt');
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public function provideSupports(): array
+    {
+        return [
+            'odt' => ['foo.odt', true],
+            'uppercase' => ['foo.ODT', true],
+            'docx' => ['foo.docx', false],
+        ];
+    }
+
+    /**
+     * @dataProvider provideSupports
+     */
+    public function testSupports(string $path, bool $expected)
+    {
+        $this->assertSame($expected, (new OdtExtractor())->supports($path));
     }
 }

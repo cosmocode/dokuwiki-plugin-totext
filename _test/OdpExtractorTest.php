@@ -2,6 +2,7 @@
 
 namespace dokuwiki\plugin\totext\test;
 
+use dokuwiki\plugin\totext\Exception\ExtractionException;
 use dokuwiki\plugin\totext\Extractor\OdpExtractor;
 use DokuWikiTest;
 
@@ -52,10 +53,37 @@ class OdpExtractorTest extends DokuWikiTest
         $this->assertLessThan(strpos($text, 'Second slide'), strpos($text, 'First slide title'));
     }
 
-    public function testSupports()
+    public function testMissingContentThrows()
     {
-        $e = new OdpExtractor();
-        $this->assertTrue($e->supports('foo.odp'));
-        $this->assertFalse($e->supports('foo.pptx'));
+        $path = $this->tmp . '/nocontent.odp';
+        FixtureBuilder::zip($path, ['mimetype' => 'application/vnd.oasis.opendocument.presentation']);
+        $this->expectException(ExtractionException::class);
+        (new OdpExtractor())->extract($path);
+    }
+
+    public function testMissingFileThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new OdpExtractor())->extract($this->tmp . '/nope.odp');
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public function provideSupports(): array
+    {
+        return [
+            'odp' => ['foo.odp', true],
+            'uppercase' => ['foo.ODP', true],
+            'pptx' => ['foo.pptx', false],
+        ];
+    }
+
+    /**
+     * @dataProvider provideSupports
+     */
+    public function testSupports(string $path, bool $expected)
+    {
+        $this->assertSame($expected, (new OdpExtractor())->supports($path));
     }
 }

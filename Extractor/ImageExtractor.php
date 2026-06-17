@@ -36,14 +36,20 @@ final class ImageExtractor implements ExtractorInterface
     /**
      * Ordered map of output label => candidate EXIF tag names (for TIFF).
      *
+     * PHP's exif extension decodes the Windows "XP" tags itself and exposes them
+     * in a WINXP section under the short names Title/Comment/Author/Keywords/
+     * Subject (already UTF-8). Those short names are listed first; the raw XP*
+     * names are kept as a fallback for exif builds that surface the undecoded
+     * tag instead (normaliseExifValue() then handles the UTF-16LE decode).
+     *
      * @var array<string, string[]>
      */
     private const EXIF_FIELDS = [
-        'Title' => ['XPTitle'],
-        'Caption' => ['ImageDescription', 'UserComment', 'XPComment', 'XPSubject'],
-        'Author' => ['Artist', 'XPAuthor'],
+        'Title' => ['Title', 'XPTitle'],
+        'Caption' => ['ImageDescription', 'UserComment', 'Comment', 'Subject', 'XPComment', 'XPSubject'],
+        'Author' => ['Artist', 'Author', 'XPAuthor'],
         'Copyright' => ['Copyright'],
-        'Keywords' => ['XPKeywords'],
+        'Keywords' => ['Keywords', 'XPKeywords'],
         'Date' => ['DateTimeOriginal', 'DateTime'],
         'Camera' => ['Model'],
     ];
