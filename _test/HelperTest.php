@@ -15,23 +15,6 @@ class HelperTest extends DokuWikiTest
     /** @var string[] */
     protected $pluginsEnabled = ['totext'];
 
-    /** @var string temp working directory */
-    private $tmp = '';
-
-    /** @inheritDoc */
-    public function setUp(): void
-    {
-        parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
-    }
-
-    /** @inheritDoc */
-    public function tearDown(): void
-    {
-        FixtureBuilder::cleanup($this->tmp);
-        parent::tearDown();
-    }
-
     public function testHelperLoads()
     {
         $helper = plugin_load('helper', 'totext');
@@ -40,13 +23,10 @@ class HelperTest extends DokuWikiTest
 
     public function testExtractTextHappyPath()
     {
-        $path = $this->tmp . '/sample.docx';
-        FixtureBuilder::buildDocx($path);
-
         /** @var \helper_plugin_totext $helper */
         $helper = plugin_load('helper', 'totext');
-        $text = $helper->extractText($path);
-        $this->assertStringContainsString('Hello world from DOCX', $text);
+        $text = $helper->extractText(Samples::path('sample.docx'));
+        $this->assertStringContainsString('Totext Sample Document', $text);
     }
 
     public function testExtractTextThrowsOnUnsupported()
@@ -54,7 +34,7 @@ class HelperTest extends DokuWikiTest
         /** @var \helper_plugin_totext $helper */
         $helper = plugin_load('helper', 'totext');
         $this->expectException(UnsupportedFormatException::class);
-        $helper->extractText($this->tmp . '/file.unknownext');
+        $helper->extractText('/tmp/file.unknownext');
     }
 
     public function testIsSupported()

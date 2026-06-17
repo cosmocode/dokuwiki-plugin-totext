@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Extractor\OdtExtractor;
 use DokuWikiTest;
 
 /**
- * Tests for the ODT extractor.
+ * Tests for the ODT extractor, run against real LibreOffice output.
  *
  * @group plugin_totext
  */
@@ -19,53 +19,49 @@ class OdtExtractorTest extends DokuWikiTest
     /** @var string temp working directory */
     private $tmp = '';
 
-    /** @var string fixture path */
-    private $fixture = '';
-
     /** @inheritDoc */
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
-        $this->fixture = $this->tmp . '/sample.odt';
-        FixtureBuilder::buildOdt($this->fixture);
+        $this->tmp = Samples::tempDir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        FixtureBuilder::cleanup($this->tmp);
+        Samples::cleanup($this->tmp);
         parent::tearDown();
     }
 
-    public function testExtractsText()
+    public function testExtractsHeadingTabAndLineBreak()
     {
-        $text = (new OdtExtractor())->extract($this->fixture);
-        $this->assertStringContainsString('Hello world from ODT', $text);
-        $this->assertStringContainsString('First paragraph', $text);
-        $this->assertStringContainsString('line two', $text);
-    }
-
-    public function testTabAndLineBreakProduceWhitespace()
-    {
-        $text = (new OdtExtractor())->extract($this->fixture);
-        $this->assertStringContainsString("First paragraph\tafter tab", $text);
+        $text = (new OdtExtractor())->extract(Samples::path('formatting.odt'));
+        $this->assertStringContainsString('Heading One', $text);
+        $this->assertStringContainsString('Body paragraph text', $text);
+        // <text:tab/> becomes a tab, <text:line-break/> becomes a newline
+        $this->assertStringContainsString("Tab\tseparated", $text);
         $this->assertStringContainsString("Line one\nline two", $text);
     }
 
     public function testHeadingStartsOnOwnLine()
     {
-        $text = (new OdtExtractor())->extract($this->fixture);
+        $text = (new OdtExtractor())->extract(Samples::path('formatting.odt'));
         $lines = explode("\n", $text);
-        $this->assertSame('Hello world from ODT', $lines[0]);
+        $this->assertSame('Heading One', $lines[0]);
     }
 
     public function testMissingContentThrows()
     {
-        $path = $this->tmp . '/nocontent.odt';
-        FixtureBuilder::zip($path, ['mimetype' => 'application/vnd.oasis.opendocument.text']);
+        // a real ODT with its content.xml removed
+        $broken = Samples::withoutPart('sample.odt', 'content.xml', $this->tmp);
         $this->expectException(ExtractionException::class);
-        (new OdtExtractor())->extract($path);
+        (new OdtExtractor())->extract($broken);
+    }
+
+    public function testCorruptContainerThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new OdtExtractor())->extract(Samples::corrupt($this->tmp . '/corrupt.odt'));
     }
 
     public function testMissingFileThrows()

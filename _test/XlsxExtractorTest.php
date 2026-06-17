@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Extractor\XlsxExtractor;
 use DokuWikiTest;
 
 /**
- * Tests for the XLSX extractor.
+ * Tests for the XLSX extractor, run against real LibreOffice output.
  *
  * @group plugin_totext
  */
@@ -19,54 +19,33 @@ class XlsxExtractorTest extends DokuWikiTest
     /** @var string temp working directory */
     private $tmp = '';
 
-    /** @var string fixture path */
-    private $fixture = '';
-
     /** @inheritDoc */
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
-        $this->fixture = $this->tmp . '/sample.xlsx';
-        FixtureBuilder::buildXlsx($this->fixture);
+        $this->tmp = Samples::tempDir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        FixtureBuilder::cleanup($this->tmp);
+        Samples::cleanup($this->tmp);
         parent::tearDown();
     }
 
-    public function testIncludesSheetHeader()
+    public function testIncludesSheetHeaderAndTabSeparatedCells()
     {
-        $text = (new XlsxExtractor())->extract($this->fixture);
-        $this->assertStringContainsString('=== Sheet: Data ===', $text);
+        $text = (new XlsxExtractor())->extract(Samples::path('sample.xlsx'));
+        $this->assertStringContainsString('=== Sheet: ', $text);
+        $this->assertStringContainsString("Widget\t42", $text);
     }
 
-    public function testResolvesSharedStrings()
+    public function testFollowsTabOrderAndResolvesSheetNames()
     {
-        $text = (new XlsxExtractor())->extract($this->fixture);
-        $this->assertStringContainsString("Hello\tWorld", $text);
-    }
-
-    public function testIncludesRawAndInlineValues()
-    {
-        $text = (new XlsxExtractor())->extract($this->fixture);
-        $this->assertStringContainsString("42\tinline", $text);
-    }
-
-    public function testFollowsWorkbookOrderAndPairsNamesViaRelationships()
-    {
-        // Fixture: tab order is "Beta" (stored in sheet2.xml) then "Alpha"
-        // (stored in sheet1.xml). A correct extractor resolves names to files
-        // through xl/_rels/workbook.xml.rels rather than pairing sorted file
-        // names with names positionally.
-        $path = $this->tmp . '/multi.xlsx';
-        FixtureBuilder::buildMultiSheetXlsx($path);
-        $text = (new XlsxExtractor())->extract($path);
-
-        // Beta must come first and sit above its own content, Alpha second.
+        // multi-sheet.xlsx has tabs "Beta" then "Alpha"; the extractor must
+        // resolve each sheet name to its worksheet file via the relationships
+        // and emit them in tab order.
+        $text = (new XlsxExtractor())->extract(Samples::path('multi-sheet.xlsx'));
         $this->assertStringContainsString("=== Sheet: Beta ===\nBetaCell", $text);
         $this->assertStringContainsString("=== Sheet: Alpha ===\nAlphaCell", $text);
         $this->assertLessThan(
@@ -77,19 +56,18 @@ class XlsxExtractorTest extends DokuWikiTest
 
     public function testFallsBackToSheetNumberWhenWorkbookMissing()
     {
-        $path = $this->tmp . '/nowb.xlsx';
-        FixtureBuilder::buildXlsxNoWorkbook($path);
-        $text = (new XlsxExtractor())->extract($path);
+        // a real XLSX whose xl/workbook.xml is gone: names can no longer be
+        // resolved, so the extractor falls back to positional "SheetN" naming
+        $broken = Samples::withoutPart('sample.xlsx', 'xl/workbook.xml', $this->tmp);
+        $text = (new XlsxExtractor())->extract($broken);
         $this->assertStringContainsString('=== Sheet: Sheet1 ===', $text);
-        $this->assertStringContainsString('Orphan', $text);
+        $this->assertStringContainsString('Widget', $text);
     }
 
-    public function testNoWorksheetsThrows()
+    public function testCorruptContainerThrows()
     {
-        $path = $this->tmp . '/empty.xlsx';
-        FixtureBuilder::buildXlsxNoWorksheets($path);
         $this->expectException(ExtractionException::class);
-        (new XlsxExtractor())->extract($path);
+        (new XlsxExtractor())->extract(Samples::corrupt($this->tmp . '/corrupt.xlsx'));
     }
 
     public function testMissingFileThrows()

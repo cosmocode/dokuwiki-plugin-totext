@@ -83,22 +83,32 @@ Each test run will provide a fresh DokuWiki instance in a temporary directory vi
 
 ### Test fixtures
 
-Two kinds of fixtures are used:
+**All tests run against real files — never hand-built containers.** A
+hand-authored fixture only encodes our *belief* about a format; if that belief
+is wrong the extractor is written to match and both agree on a fiction. So
+every sample is produced by a real application and committed under `_test/data`.
+`_test` is `export-ignore`d, so these binaries never ship in release tarballs.
 
-* **Synthetic, hand-built** — `_test/FixtureBuilder.php` builds tiny valid
-  containers on the fly (real ZIPs via `splitbrain\PHPArchive\Zip`, a real PDF
-  byte stream, a GD-encoded JPEG with IPTC, a hand-packed baseline TIFF with
-  EXIF incl. a UTF-16LE `XPTitle`). These are deterministic and exercise
-  specific edge cases (header/footer parts, speaker notes, repeated columns,
-  `MAX_REPEAT`, sheet-name fallbacks, missing-part error paths). `zip()` is
-  exposed for composing deliberately broken containers.
-* **Real-world** — `_test/data/sample.*` are genuine LibreOffice outputs
-  (docx/xlsx/pptx/odt/ods/odp/pdf) sharing one source text; covered by
-  `SampleFilesTest`. They are original content (no licensing entanglement) and
-  `_test` is `export-ignore`d so they never ship in release tarballs. Regenerate
-  with LibreOffice headless: author HTML/CSV/flat-`.fodp` sources, convert to a
-  native ODF first, then export the OOXML/PDF variant
-  (`soffice -env:UserInstallation=file:///tmp/lo --headless --convert-to <fmt>`).
+* **Generation** — `_test/data/regenerate.sh` rebuilds the edge-case samples
+  from the plain-text sources authored inline in that script: LibreOffice
+  headless converts flat-ODF (`.fodt`/`.fods`/`.fodp`) to the office formats,
+  and ImageMagick + exiftool produce the images. Requires `soffice`, `exiftool`,
+  `magick`. The shared-source happy-path files (`sample.docx`, `sample.xlsx`, …
+  used by `SampleFilesTest`) are committed as-is and not rebuilt by the script.
+* **What the samples cover** — `sample.*` (one shared source text across
+  docx/xlsx/pptx/odt/ods/odp/pdf/txt) for the happy path; `formatting.docx`/
+  `formatting.odt` (heading, in-paragraph tab, line break, plus DOCX
+  header/footer); `multi-sheet.xlsx` (tab order + name↔file resolution);
+  `notes.pptx` (speaker notes); `rich.ods` (merged/covered cells,
+  multi-paragraph cell, in-cell tab); `meta.jpg` (IPTC), `meta.tiff`
+  (EXIF incl. a UTF-16LE XP tag), `plain.jpg` (no metadata).
+* **Error-path tests** — derived from real files, not fabricated: `Samples.php`
+  exposes `withoutPart()` (copy a real container and drop one ZIP member, e.g. a
+  DOCX missing `word/document.xml`) and `corrupt()` (non-archive bytes), plus
+  `path()`/`tempDir()`/`cleanup()`. There is no fixture *builder*.
+* **Scenarios real tools cannot produce are not tested** — e.g. an unnamed ODS
+  sheet or a repeated *filled-text* cell. LibreOffice never emits them, so
+  testing them would mean asserting against invented structures.
 
 ### Format-specific gotchas learned
 

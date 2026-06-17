@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Extractor\OdpExtractor;
 use DokuWikiTest;
 
 /**
- * Tests for the ODP extractor.
+ * Tests for the ODP extractor, run against real LibreOffice output.
  *
  * @group plugin_totext
  */
@@ -19,46 +19,44 @@ class OdpExtractorTest extends DokuWikiTest
     /** @var string temp working directory */
     private $tmp = '';
 
-    /** @var string fixture path */
-    private $fixture = '';
-
     /** @inheritDoc */
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
-        $this->fixture = $this->tmp . '/sample.odp';
-        FixtureBuilder::buildOdp($this->fixture);
+        $this->tmp = Samples::tempDir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        FixtureBuilder::cleanup($this->tmp);
+        Samples::cleanup($this->tmp);
         parent::tearDown();
     }
 
-    public function testExtractsBothSlides()
+    public function testExtractsSlidesInOrderWithHeaders()
     {
-        $text = (new OdpExtractor())->extract($this->fixture);
-        $this->assertStringContainsString('First slide title', $text);
-        $this->assertStringContainsString('Second slide', $text);
-    }
-
-    public function testSlideHeadersInOrder()
-    {
-        $text = (new OdpExtractor())->extract($this->fixture);
+        $text = (new OdpExtractor())->extract(Samples::path('sample.odp'));
         $this->assertStringContainsString('=== Slide 1 ===', $text);
         $this->assertStringContainsString('=== Slide 2 ===', $text);
-        $this->assertLessThan(strpos($text, 'Second slide'), strpos($text, 'First slide title'));
+        $this->assertStringContainsString('Slide One Title', $text);
+        $this->assertLessThan(
+            strpos($text, 'Slide Two Title'),
+            strpos($text, 'Slide One Title'),
+        );
     }
 
     public function testMissingContentThrows()
     {
-        $path = $this->tmp . '/nocontent.odp';
-        FixtureBuilder::zip($path, ['mimetype' => 'application/vnd.oasis.opendocument.presentation']);
+        // a real ODP with its content.xml removed
+        $broken = Samples::withoutPart('sample.odp', 'content.xml', $this->tmp);
         $this->expectException(ExtractionException::class);
-        (new OdpExtractor())->extract($path);
+        (new OdpExtractor())->extract($broken);
+    }
+
+    public function testCorruptContainerThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new OdpExtractor())->extract(Samples::corrupt($this->tmp . '/corrupt.odp'));
     }
 
     public function testMissingFileThrows()

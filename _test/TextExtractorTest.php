@@ -9,6 +9,9 @@ use DokuWikiTest;
 /**
  * Tests for the plain-text family extractor.
  *
+ * Plain text needs no container, so these write the exact bytes under test
+ * directly to disk — there is no fabricated structure to get wrong.
+ *
  * @group plugin_totext
  */
 class TextExtractorTest extends DokuWikiTest
@@ -23,20 +26,20 @@ class TextExtractorTest extends DokuWikiTest
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
+        $this->tmp = Samples::tempDir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        FixtureBuilder::cleanup($this->tmp);
+        Samples::cleanup($this->tmp);
         parent::tearDown();
     }
 
     public function testReadsPlainText()
     {
         $path = $this->tmp . '/sample.txt';
-        FixtureBuilder::buildTextFile($path, "Hello text\nsecond line");
+        file_put_contents($path, "Hello text\nsecond line");
         $text = (new TextExtractor())->extract($path);
         $this->assertSame("Hello text\nsecond line", $text);
     }
@@ -44,7 +47,7 @@ class TextExtractorTest extends DokuWikiTest
     public function testNormalisesLineEndings()
     {
         $path = $this->tmp . '/crlf.txt';
-        FixtureBuilder::buildTextFile($path, "one\r\ntwo\rthree");
+        file_put_contents($path, "one\r\ntwo\rthree");
         $text = (new TextExtractor())->extract($path);
         $this->assertSame("one\ntwo\nthree", $text);
     }
@@ -52,8 +55,8 @@ class TextExtractorTest extends DokuWikiTest
     public function testConvertsLatin1ToUtf8()
     {
         $path = $this->tmp . '/latin1.txt';
-        // 0xE4 is "ä" in Latin-1, invalid as standalone UTF-8
-        FixtureBuilder::buildTextFile($path, "caf\xE9");
+        // 0xE9 is "é" in Latin-1, invalid as standalone UTF-8
+        file_put_contents($path, "caf\xE9");
         $text = (new TextExtractor())->extract($path);
         $this->assertSame('café', $text);
     }
@@ -61,9 +64,8 @@ class TextExtractorTest extends DokuWikiTest
     public function testReplacesInvalidBytes()
     {
         $path = $this->tmp . '/bad.txt';
-        // a lone 0xFF byte is invalid in both UTF-8 and (after Latin-1 conversion)
-        // must not survive as a raw byte in the output
-        FixtureBuilder::buildTextFile($path, "ok\xFFok");
+        // a lone 0xFF byte must not survive as a raw byte in the output
+        file_put_contents($path, "ok\xFFok");
         $text = (new TextExtractor())->extract($path);
         $this->assertStringContainsString('ok', $text);
         $this->assertStringNotContainsString("\xFF", $text);
@@ -72,7 +74,7 @@ class TextExtractorTest extends DokuWikiTest
     public function testEmptyFileYieldsEmptyString()
     {
         $path = $this->tmp . '/empty.txt';
-        FixtureBuilder::buildTextFile($path, '');
+        file_put_contents($path, '');
         $this->assertSame('', (new TextExtractor())->extract($path));
     }
 

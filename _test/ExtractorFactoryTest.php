@@ -34,21 +34,13 @@ class ExtractorFactoryTest extends DokuWikiTest
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
-        FixtureBuilder::buildDocx($this->tmp . '/a.docx');
-        FixtureBuilder::buildXlsx($this->tmp . '/a.xlsx');
-        FixtureBuilder::buildPptx($this->tmp . '/a.pptx');
-        FixtureBuilder::buildPdf($this->tmp . '/a.pdf', 'Round trip PDF');
-        FixtureBuilder::buildOdt($this->tmp . '/a.odt');
-        FixtureBuilder::buildOds($this->tmp . '/a.ods');
-        FixtureBuilder::buildOdp($this->tmp . '/a.odp');
-        FixtureBuilder::buildTextFile($this->tmp . '/a.txt', "Plain text file\nsecond line");
+        $this->tmp = Samples::tempDir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        FixtureBuilder::cleanup($this->tmp);
+        Samples::cleanup($this->tmp);
         parent::tearDown();
     }
 
@@ -140,21 +132,22 @@ class ExtractorFactoryTest extends DokuWikiTest
     }
 
     /**
-     * Convenience extract() must round-trip every container format.
+     * Convenience extract() must route to the right extractor and return text
+     * for every format, checked against the real sample files.
      *
-     * @return array<string, array{0: string, 1: string}> [extension, expected substring]
+     * @return array<string, array{0: string, 1: string}> [sample file, expected substring]
      */
     public function provideRoundtrip(): array
     {
         return [
-            'docx' => ['a.docx', 'Hello world from DOCX'],
-            'xlsx' => ['a.xlsx', 'Hello'],
-            'pptx' => ['a.pptx', 'First slide title'],
-            'pdf' => ['a.pdf', 'Round trip PDF'],
-            'odt' => ['a.odt', 'Hello world from ODT'],
-            'ods' => ['a.ods', 'Hello'],
-            'odp' => ['a.odp', 'First slide title'],
-            'txt' => ['a.txt', 'Plain text file'],
+            'docx' => ['sample.docx', 'Totext Sample Document'],
+            'xlsx' => ['sample.xlsx', 'Widget'],
+            'pptx' => ['sample.pptx', 'Slide One Title'],
+            'pdf' => ['sample.pdf', 'Totext Sample Document'],
+            'odt' => ['sample.odt', 'Totext Sample Document'],
+            'ods' => ['sample.ods', 'Widget'],
+            'odp' => ['sample.odp', 'Slide One Title'],
+            'txt' => ['sample.txt', 'Plain text sample'],
         ];
     }
 
@@ -163,15 +156,13 @@ class ExtractorFactoryTest extends DokuWikiTest
      */
     public function testExtractConvenienceRoundtripsFormat(string $file, string $needle)
     {
-        $this->assertStringContainsString($needle, ExtractorFactory::extract($this->tmp . '/' . $file));
+        $this->assertStringContainsString($needle, ExtractorFactory::extract(Samples::path($file)));
     }
 
     public function testCorruptDocxRaisesExtractionException()
     {
-        $bad = $this->tmp . '/bad.docx';
-        file_put_contents($bad, 'this is not a zip');
         $this->expectException(ExtractionException::class);
-        ExtractorFactory::extract($bad);
+        ExtractorFactory::extract(Samples::corrupt($this->tmp . '/bad.docx'));
     }
 
     public function testSupportedExtensionsListsKnownFormats()

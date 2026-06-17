@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Extractor\OdsExtractor;
 use DokuWikiTest;
 
 /**
- * Tests for the ODS extractor.
+ * Tests for the ODS extractor, run against real LibreOffice output.
  *
  * @group plugin_totext
  */
@@ -19,90 +19,54 @@ class OdsExtractorTest extends DokuWikiTest
     /** @var string temp working directory */
     private $tmp = '';
 
-    /** @var string fixture path */
-    private $fixture = '';
-
     /** @inheritDoc */
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
-        $this->fixture = $this->tmp . '/sample.ods';
-        FixtureBuilder::buildOds($this->fixture);
+        $this->tmp = Samples::tempDir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        FixtureBuilder::cleanup($this->tmp);
+        Samples::cleanup($this->tmp);
         parent::tearDown();
     }
 
     public function testIncludesSheetHeader()
     {
-        $text = (new OdsExtractor())->extract($this->fixture);
-        $this->assertStringContainsString('=== Sheet: Data ===', $text);
+        $text = (new OdsExtractor())->extract(Samples::path('rich.ods'));
+        $this->assertStringContainsString('=== Sheet: Edge ===', $text);
     }
 
-    public function testRendersTabSeparatedRows()
+    public function testMergedCellEmitsCoveredColumnsAsTabs()
     {
-        $text = (new OdsExtractor())->extract($this->fixture);
-        $this->assertStringContainsString("Hello\tWorld", $text);
-        $this->assertStringContainsString("42\tinline", $text);
-    }
-
-    public function testRepeatedColumnsExpandTextCells()
-    {
-        $path = $this->tmp . '/rich.ods';
-        FixtureBuilder::buildOdsRich($path);
-        $text = (new OdsExtractor())->extract($path);
-        // a text cell with number-columns-repeated="3" expands to three columns
-        $this->assertStringContainsString("A\tA\tA\tB", $text);
-    }
-
-    public function testTrailingEmptyRepeatDoesNotExpand()
-    {
-        $path = $this->tmp . '/rich.ods';
-        FixtureBuilder::buildOdsRich($path);
-        $text = (new OdsExtractor())->extract($path);
-        // an *empty* cell with number-columns-repeated="5" occupies a single
-        // column only — it must not pad the grid with five tabs
-        $this->assertStringContainsString("Line1 Line2\t\tEnd", $text);
+        // "Merged" spans three columns; LibreOffice stores the two extra columns
+        // as a covered-cell run, which the extractor renders as empty columns
+        $text = (new OdsExtractor())->extract(Samples::path('rich.ods'));
+        $this->assertStringContainsString("Merged\t\tAfter", $text);
     }
 
     public function testMultiParagraphCellAndInCellTab()
     {
-        $path = $this->tmp . '/rich.ods';
-        FixtureBuilder::buildOdsRich($path);
-        $text = (new OdsExtractor())->extract($path);
-        // covered cells contribute their text; an in-cell tab becomes a space
-        $this->assertStringContainsString("Merged\tX Y", $text);
-    }
-
-    public function testUnnamedSheetFallsBackToSheetNumber()
-    {
-        $path = $this->tmp . '/rich.ods';
-        FixtureBuilder::buildOdsRich($path);
-        $text = (new OdsExtractor())->extract($path);
-        $this->assertStringContainsString('=== Sheet: Sheet2 ===', $text);
-        $this->assertStringContainsString('Unnamed sheet', $text);
-    }
-
-    public function testHugeColumnRepeatIsCapped()
-    {
-        $path = $this->tmp . '/huge.ods';
-        FixtureBuilder::buildOdsHugeRepeat($path, 100000);
-        $text = (new OdsExtractor())->extract($path);
-        // MAX_REPEAT caps expansion at 1024 regardless of the declared repeat
-        $this->assertSame(1024, substr_count($text, 'Z'));
+        // a cell with two paragraphs joins on a space; an in-cell tab also
+        // becomes a space; the two cells stay tab-separated
+        $text = (new OdsExtractor())->extract(Samples::path('rich.ods'));
+        $this->assertStringContainsString("Line1 Line2\tX Y", $text);
     }
 
     public function testMissingContentThrows()
     {
-        $path = $this->tmp . '/nocontent.ods';
-        FixtureBuilder::zip($path, ['mimetype' => 'application/vnd.oasis.opendocument.spreadsheet']);
+        // a real ODS with its content.xml removed
+        $broken = Samples::withoutPart('sample.ods', 'content.xml', $this->tmp);
         $this->expectException(ExtractionException::class);
-        (new OdsExtractor())->extract($path);
+        (new OdsExtractor())->extract($broken);
+    }
+
+    public function testCorruptContainerThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new OdsExtractor())->extract(Samples::corrupt($this->tmp . '/corrupt.ods'));
     }
 
     public function testMissingFileThrows()

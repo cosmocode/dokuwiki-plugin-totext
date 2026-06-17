@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Extractor\PptxExtractor;
 use DokuWikiTest;
 
 /**
- * Tests for the PPTX extractor.
+ * Tests for the PPTX extractor, run against real LibreOffice output.
  *
  * @group plugin_totext
  */
@@ -19,56 +19,34 @@ class PptxExtractorTest extends DokuWikiTest
     /** @var string temp working directory */
     private $tmp = '';
 
-    /** @var string fixture path */
-    private $fixture = '';
-
     /** @inheritDoc */
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = FixtureBuilder::tempDir();
-        $this->fixture = $this->tmp . '/sample.pptx';
-        FixtureBuilder::buildPptx($this->fixture);
+        $this->tmp = Samples::tempDir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        FixtureBuilder::cleanup($this->tmp);
+        Samples::cleanup($this->tmp);
         parent::tearDown();
     }
 
-    public function testExtractsBothSlides()
+    public function testExtractsSlidesInOrderWithHeaders()
     {
-        $text = (new PptxExtractor())->extract($this->fixture);
-        $this->assertStringContainsString('First slide title', $text);
-        $this->assertStringContainsString('Second slide', $text);
-    }
-
-    public function testHonoursSldIdLstOrder()
-    {
-        // Fixture's sldIdLst points rId2 (slide1.xml = "First slide title") FIRST,
-        // then rId1 (slide2.xml = "Second slide"). Display order must reflect that.
-        $text = (new PptxExtractor())->extract($this->fixture);
-        $posFirst = strpos($text, 'First slide title');
-        $posSecond = strpos($text, 'Second slide');
-        $this->assertNotFalse($posFirst);
-        $this->assertNotFalse($posSecond);
-        $this->assertLessThan($posSecond, $posFirst);
-    }
-
-    public function testSlideHeaders()
-    {
-        $text = (new PptxExtractor())->extract($this->fixture);
+        $text = (new PptxExtractor())->extract(Samples::path('sample.pptx'));
         $this->assertStringContainsString('=== Slide 1 ===', $text);
         $this->assertStringContainsString('=== Slide 2 ===', $text);
+        $this->assertLessThan(
+            strpos($text, 'Slide Two Title'),
+            strpos($text, 'Slide One Title'),
+        );
     }
 
     public function testExtractsSpeakerNotes()
     {
-        $path = $this->tmp . '/notes.pptx';
-        FixtureBuilder::buildPptxWithNotes($path);
-        $text = (new PptxExtractor())->extract($path);
+        $text = (new PptxExtractor())->extract(Samples::path('notes.pptx'));
         $this->assertStringContainsString('Visible slide body', $text);
         $this->assertStringContainsString('--- Notes ---', $text);
         $this->assertStringContainsString('These are the speaker notes.', $text);
@@ -79,12 +57,24 @@ class PptxExtractorTest extends DokuWikiTest
         );
     }
 
-    public function testNoSlidesThrows()
+    public function testFallsBackToSlideFilesWhenPresentationMissing()
     {
-        // a valid ZIP with neither presentation parts nor slide parts
-        $path = $this->tmp . '/empty.pptx';
-        FixtureBuilder::zip($path, ['[Content_Types].xml' => '<Types/>']);
+        // a real PPTX whose ppt/presentation.xml is gone: with no sldIdLst the
+        // extractor falls back to scanning the slide parts directly
+        $broken = Samples::withoutPart('sample.pptx', 'ppt/presentation.xml', $this->tmp);
+        $text = (new PptxExtractor())->extract($broken);
+        $this->assertStringContainsString('Slide One Title', $text);
+    }
+
+    public function testCorruptContainerThrows()
+    {
         $this->expectException(ExtractionException::class);
-        (new PptxExtractor())->extract($path);
+        (new PptxExtractor())->extract(Samples::corrupt($this->tmp . '/corrupt.pptx'));
+    }
+
+    public function testMissingFileThrows()
+    {
+        $this->expectException(ExtractionException::class);
+        (new PptxExtractor())->extract($this->tmp . '/nope.pptx');
     }
 }
