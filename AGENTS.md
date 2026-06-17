@@ -27,7 +27,12 @@ It exposes two entry points:
   (OOXML *and* OpenDocument). Provides `readPart()`, `listParts()`, temp-dir
   handling, and two streaming `XMLReader` text walkers: `extractTextFromXml()`
   (text in a wrapper element, used by OOXML) and `extractAllTextFromXml()` (text
-  as character data, used by OpenDocument).
+  as character data, used by OpenDocument). The unpack temp dir is created in
+  DokuWiki's own temp dir (`$conf['tmpdir']`) via core's `io_mktmpdir()` and
+  removed with core's `io_rmdir($dir, true)` — never the system temp dir.
+  `extract()` removes it promptly in a `finally` block; the class `__destruct()`
+  repeats the cleanup as a safety net so the dir is gone even if the process
+  dies (e.g. a fatal error) before `finally` runs.
 - Concrete extractors: `DocxExtractor`, `XlsxExtractor`, `PptxExtractor`,
   `OdtExtractor`, `OdsExtractor`, `OdpExtractor`, `PdfExtractor`, `TextExtractor`
   (txt/csv/md/log/...), `ImageExtractor` (EXIF/IPTC metadata of jpg/tiff — metadata

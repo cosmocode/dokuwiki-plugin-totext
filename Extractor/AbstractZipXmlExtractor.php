@@ -42,6 +42,18 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
         return strtolower(pathinfo($path, PATHINFO_EXTENSION)) === $this->extension();
     }
 
+    /**
+     * Clean up any leftover temp dir when the instance is destroyed.
+     *
+     * extract() removes the temp dir promptly in its finally block; this acts
+     * as a safety net so a dir is still removed if the process dies (e.g. on a
+     * fatal error) before that block runs.
+     */
+    public function __destruct()
+    {
+        $this->cleanup();
+    }
+
     /** @inheritDoc */
     public function extract(string $path): string
     {
@@ -66,10 +78,7 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
                 $e,
             );
         } finally {
-            if ($this->tempDir !== '') {
-                $this->cleanup($this->tempDir);
-                $this->tempDir = '';
-            }
+            $this->cleanup();
         }
     }
 
@@ -218,40 +227,35 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
     /**
      * Create a private temporary directory for unpacking the archive.
      *
+     * Uses DokuWiki's temp dir ($conf['tmpdir']) via the core io_mktmpdir()
+     * helper rather than the system temp dir.
+     *
      * @return string the created directory path
      * @throws ExtractionException if the directory cannot be created
      */
     private function makeTempDir(): string
     {
-        $dir = sys_get_temp_dir() . '/totext-' . bin2hex(random_bytes(8));
-        if (!@mkdir($dir, 0700, true) && !is_dir($dir)) {
-            throw new ExtractionException("Could not create temp dir: $dir");
+        $dir = io_mktmpdir();
+        if ($dir === false) {
+            throw new ExtractionException('Could not create temp dir');
         }
         return $dir;
     }
 
     /**
-     * Recursively remove a directory and all its contents.
+     * Recursively remove the unpack temp dir and reset the tracking property.
      *
-     * @param string $dir directory to remove
+     * Safe to call repeatedly and when no temp dir is set (the destructor and
+     * extract()'s finally block both call it).
+     *
      * @return void
      */
-    private function cleanup(string $dir): void
+    private function cleanup(): void
     {
-        if (!is_dir($dir)) {
+        if ($this->tempDir === '') {
             return;
         }
-        $it = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($it as $file) {
-            if ($file->isDir()) {
-                @rmdir($file->getPathname());
-            } else {
-                @unlink($file->getPathname());
-            }
-        }
-        @rmdir($dir);
+        io_rmdir($this->tempDir, true);
+        $this->tempDir = '';
     }
 }

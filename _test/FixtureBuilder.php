@@ -15,13 +15,16 @@ final class FixtureBuilder
     /**
      * Create a fresh temporary directory.
      *
+     * Uses DokuWiki's own temp dir ($conf['tmpdir']) via core's io_mktmpdir(),
+     * matching how the extractors themselves allocate temp space. The test
+     * environment provides a fresh tmpdir per run, so fixtures stay inside the
+     * DokuWiki sandbox instead of leaking into the system temp dir.
+     *
      * @return string the directory path
      */
     public static function tempDir()
     {
-        $dir = sys_get_temp_dir() . '/totext-tests-' . bin2hex(random_bytes(8));
-        mkdir($dir, 0700, true);
-        return $dir;
+        return io_mktmpdir();
     }
 
     /**
@@ -32,17 +35,7 @@ final class FixtureBuilder
      */
     public static function cleanup($dir)
     {
-        if (!is_dir($dir)) {
-            return;
-        }
-        $it = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($it as $file) {
-            $file->isDir() ? @rmdir($file->getPathname()) : @unlink($file->getPathname());
-        }
-        @rmdir($dir);
+        io_rmdir($dir, true);
     }
 
     /**
