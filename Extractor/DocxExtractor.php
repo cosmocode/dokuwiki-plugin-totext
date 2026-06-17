@@ -10,12 +10,6 @@ use dokuwiki\plugin\totext\Exception\ExtractionException;
 final class DocxExtractor extends AbstractZipXmlExtractor
 {
     /** @inheritDoc */
-    protected function extension(): string
-    {
-        return 'docx';
-    }
-
-    /** @inheritDoc */
     protected function extractText(): string
     {
         $doc = $this->readPart('word/document.xml');

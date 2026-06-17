@@ -66,24 +66,4 @@ class OdpExtractorTest extends DokuWikiTest
         $this->expectException(ExtractionException::class);
         (new OdpExtractor())->extract($this->tmp . '/nope.odp');
     }
-
-    /**
-     * @return array<string, array{0: string, 1: bool}>
-     */
-    public function provideSupports(): array
-    {
-        return [
-            'odp' => ['foo.odp', true],
-            'uppercase' => ['foo.ODP', true],
-            'pptx' => ['foo.pptx', false],
-        ];
-    }
-
-    /**
-     * @dataProvider provideSupports
-     */
-    public function testSupports(string $path, bool $expected)
-    {
-        $this->assertSame($expected, (new OdpExtractor())->supports($path));
-    }
 }

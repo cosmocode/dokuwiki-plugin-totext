@@ -81,30 +81,4 @@ class TextExtractorTest extends DokuWikiTest
         $this->expectException(ExtractionException::class);
         (new TextExtractor())->extract($this->tmp . '/nope.txt');
     }
-
-    /**
-     * @return array<string, array{0: string, 1: bool}>
-     */
-    public function provideSupports(): array
-    {
-        return [
-            'txt' => ['foo.txt', true],
-            'md' => ['foo.md', true],
-            'markdown' => ['foo.markdown', true],
-            'csv' => ['foo.csv', true],
-            'log' => ['foo.log', true],
-            'text' => ['foo.text', true],
-            'uppercase' => ['foo.TXT', true],
-            'pdf' => ['foo.pdf', false],
-            'docx' => ['foo.docx', false],
-        ];
-    }
-
-    /**
-     * @dataProvider provideSupports
-     */
-    public function testSupports(string $path, bool $expected)
-    {
-        $this->assertSame($expected, (new TextExtractor())->supports($path));
-    }
 }

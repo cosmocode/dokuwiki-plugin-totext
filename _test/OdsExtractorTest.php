@@ -110,24 +110,4 @@ class OdsExtractorTest extends DokuWikiTest
         $this->expectException(ExtractionException::class);
         (new OdsExtractor())->extract($this->tmp . '/nope.ods');
     }
-
-    /**
-     * @return array<string, array{0: string, 1: bool}>
-     */
-    public function provideSupports(): array
-    {
-        return [
-            'ods' => ['foo.ods', true],
-            'uppercase' => ['foo.ODS', true],
-            'xlsx' => ['foo.xlsx', false],
-        ];
-    }
-
-    /**
-     * @dataProvider provideSupports
-     */
-    public function testSupports(string $path, bool $expected)
-    {
-        $this->assertSame($expected, (new OdsExtractor())->supports($path));
-    }
 }

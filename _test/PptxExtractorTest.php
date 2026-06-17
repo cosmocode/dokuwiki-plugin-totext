@@ -87,25 +87,4 @@ class PptxExtractorTest extends DokuWikiTest
         $this->expectException(ExtractionException::class);
         (new PptxExtractor())->extract($path);
     }
-
-    /**
-     * @return array<string, array{0: string, 1: bool}>
-     */
-    public function provideSupports(): array
-    {
-        return [
-            'pptx' => ['foo.pptx', true],
-            'uppercase' => ['foo.PPTX', true],
-            'xlsx' => ['foo.xlsx', false],
-            'legacy ppt' => ['foo.ppt', false],
-        ];
-    }
-
-    /**
-     * @dataProvider provideSupports
-     */
-    public function testSupports(string $path, bool $expected)
-    {
-        $this->assertSame($expected, (new PptxExtractor())->supports($path));
-    }
 }

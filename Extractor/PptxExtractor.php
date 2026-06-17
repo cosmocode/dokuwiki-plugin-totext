@@ -17,12 +17,6 @@ final class PptxExtractor extends AbstractZipXmlExtractor
     private const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
     /** @inheritDoc */
-    protected function extension(): string
-    {
-        return 'pptx';
-    }
-
-    /** @inheritDoc */
     protected function extractText(): string
     {
         $slidePaths = $this->getSlideOrder();

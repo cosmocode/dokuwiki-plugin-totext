@@ -23,24 +23,11 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
     private string $tempDir = '';
 
     /**
-     * The file extension this extractor handles (without leading dot).
-     *
-     * @return string
-     */
-    abstract protected function extension(): string;
-
-    /**
      * Extract text from the already-unpacked archive (in $this->tempDir).
      *
      * @return string
      */
     abstract protected function extractText(): string;
-
-    /** @inheritDoc */
-    public function supports(string $path): bool
-    {
-        return strtolower(pathinfo($path, PATHINFO_EXTENSION)) === $this->extension();
-    }
 
     /**
      * Clean up any leftover temp dir when the instance is destroyed.

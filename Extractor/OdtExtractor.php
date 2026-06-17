@@ -10,12 +10,6 @@ use dokuwiki\plugin\totext\Exception\ExtractionException;
 final class OdtExtractor extends AbstractZipXmlExtractor
 {
     /** @inheritDoc */
-    protected function extension(): string
-    {
-        return 'odt';
-    }
-
-    /** @inheritDoc */
     protected function extractText(): string
     {
         $content = $this->readPart('content.xml');

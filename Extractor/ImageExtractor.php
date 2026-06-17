@@ -55,13 +55,6 @@ final class ImageExtractor implements ExtractorInterface
     ];
 
     /** @inheritDoc */
-    public function supports(string $path): bool
-    {
-        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-        return in_array($ext, ['jpg', 'jpeg', 'tif', 'tiff'], true);
-    }
-
-    /** @inheritDoc */
     public function extract(string $path): string
     {
         if (!is_file($path)) {

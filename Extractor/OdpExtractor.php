@@ -14,12 +14,6 @@ use XMLReader;
 final class OdpExtractor extends AbstractZipXmlExtractor
 {
     /** @inheritDoc */
-    protected function extension(): string
-    {
-        return 'odp';
-    }
-
-    /** @inheritDoc */
     protected function extractText(): string
     {
         $content = $this->readPart('content.xml');

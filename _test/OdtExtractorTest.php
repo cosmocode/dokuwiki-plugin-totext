@@ -73,24 +73,4 @@ class OdtExtractorTest extends DokuWikiTest
         $this->expectException(ExtractionException::class);
         (new OdtExtractor())->extract($this->tmp . '/nope.odt');
     }
-
-    /**
-     * @return array<string, array{0: string, 1: bool}>
-     */
-    public function provideSupports(): array
-    {
-        return [
-            'odt' => ['foo.odt', true],
-            'uppercase' => ['foo.ODT', true],
-            'docx' => ['foo.docx', false],
-        ];
-    }
-
-    /**
-     * @dataProvider provideSupports
-     */
-    public function testSupports(string $path, bool $expected)
-    {
-        $this->assertSame($expected, (new OdtExtractor())->supports($path));
-    }
 }

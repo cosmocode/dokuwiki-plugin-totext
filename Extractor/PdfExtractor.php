@@ -11,12 +11,6 @@ use Smalot\PdfParser\Parser;
 final class PdfExtractor implements ExtractorInterface
 {
     /** @inheritDoc */
-    public function supports(string $path): bool
-    {
-        return strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'pdf';
-    }
-
-    /** @inheritDoc */
     public function extract(string $path): string
     {
         if (!class_exists(Parser::class)) {

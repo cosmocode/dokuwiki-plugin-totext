@@ -16,13 +16,6 @@ use dokuwiki\Utf8\Conversion;
 final class TextExtractor implements ExtractorInterface
 {
     /** @inheritDoc */
-    public function supports(string $path): bool
-    {
-        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-        return in_array($ext, ['txt', 'csv', 'md', 'markdown', 'log', 'text'], true);
-    }
-
-    /** @inheritDoc */
     public function extract(string $path): string
     {
         if (!is_file($path)) {

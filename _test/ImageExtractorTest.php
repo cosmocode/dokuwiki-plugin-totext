@@ -98,28 +98,4 @@ class ImageExtractorTest extends DokuWikiTest
         $this->expectException(ExtractionException::class);
         (new ImageExtractor())->extract($this->tmp . '/nope.jpg');
     }
-
-    /**
-     * @return array<string, array{0: string, 1: bool}>
-     */
-    public function provideSupports(): array
-    {
-        return [
-            'jpg' => ['foo.jpg', true],
-            'jpeg' => ['foo.jpeg', true],
-            'tif' => ['foo.tif', true],
-            'tiff' => ['foo.tiff', true],
-            'uppercase' => ['foo.JPG', true],
-            'png' => ['foo.png', false],
-            'gif' => ['foo.gif', false],
-        ];
-    }
-
-    /**
-     * @dataProvider provideSupports
-     */
-    public function testSupports(string $path, bool $expected)
-    {
-        $this->assertSame($expected, (new ImageExtractor())->supports($path));
-    }
 }

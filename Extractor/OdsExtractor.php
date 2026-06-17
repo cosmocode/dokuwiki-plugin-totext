@@ -20,12 +20,6 @@ final class OdsExtractor extends AbstractZipXmlExtractor
     private const MAX_REPEAT = 1024;
 
     /** @inheritDoc */
-    protected function extension(): string
-    {
-        return 'ods';
-    }
-
-    /** @inheritDoc */
     protected function extractText(): string
     {
         $content = $this->readPart('content.xml');

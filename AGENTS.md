@@ -18,11 +18,15 @@ It exposes two entry points:
 
 ### Architecture
 
-- `Extractor/ExtractorInterface.php` — the contract every extractor implements
-  (`extract()` / `supports()`).
-- `Extractor/ExtractorFactory.php` — extension-driven routing (`forFile()`,
-  `extract()`, `supportedExtensions()`). Add a new format with one new extractor
-  class plus one `match` arm here.
+- `Extractor/ExtractorInterface.php` — the contract every extractor implements.
+  It is deliberately just `extract()`: extractors are dumb workers and do not
+  know their own extensions. All extension knowledge lives in the factory.
+- `Extractor/ExtractorFactory.php` — the sole routing authority (`forFile()`,
+  `extract()`, `supportedExtensions()`). Its `EXTRACTORS` constant (extension →
+  extractor class) is the single source of truth: `forFile()` looks the file's
+  extension up in it and `supportedExtensions()` returns its keys. Add a new
+  format with one new extractor class plus one entry in that map — extensions
+  are never written down anywhere else.
 - `Extractor/AbstractZipXmlExtractor.php` — shared base for all ZIP-of-XML formats
   (OOXML *and* OpenDocument). Provides `readPart()`, `listParts()`, temp-dir
   handling, and two streaming `XMLReader` text walkers: `extractTextFromXml()`

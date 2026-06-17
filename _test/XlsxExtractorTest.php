@@ -97,25 +97,4 @@ class XlsxExtractorTest extends DokuWikiTest
         $this->expectException(ExtractionException::class);
         (new XlsxExtractor())->extract($this->tmp . '/nope.xlsx');
     }
-
-    /**
-     * @return array<string, array{0: string, 1: bool}>
-     */
-    public function provideSupports(): array
-    {
-        return [
-            'xlsx' => ['foo.xlsx', true],
-            'uppercase' => ['foo.XLSX', true],
-            'docx' => ['foo.docx', false],
-            'legacy xls' => ['foo.xls', false],
-        ];
-    }
-
-    /**
-     * @dataProvider provideSupports
-     */
-    public function testSupports(string $path, bool $expected)
-    {
-        $this->assertSame($expected, (new XlsxExtractor())->supports($path));
-    }
 }

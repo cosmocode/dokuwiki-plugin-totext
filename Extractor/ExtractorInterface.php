@@ -15,12 +15,4 @@ interface ExtractorInterface
      * @throws \dokuwiki\plugin\totext\Exception\ExtractionException on I/O or parse failure
      */
     public function extract(string $path): string;
-
-    /**
-     * Whether this extractor can handle the given file (based on extension).
-     *
-     * @param string $path file name or path
-     * @return bool
-     */
-    public function supports(string $path): bool;
 }

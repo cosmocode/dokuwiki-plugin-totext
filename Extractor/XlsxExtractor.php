@@ -17,12 +17,6 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
     private const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
     /** @inheritDoc */
-    protected function extension(): string
-    {
-        return 'xlsx';
-    }
-
-    /** @inheritDoc */
     protected function extractText(): string
     {
         $sharedStrings = $this->loadSharedStrings();
