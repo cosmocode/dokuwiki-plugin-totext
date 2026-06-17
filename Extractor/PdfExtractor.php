@@ -13,9 +13,6 @@ class PdfExtractor implements ExtractorInterface
     /** @inheritDoc */
     public function extract(string $path): string
     {
-        if (!class_exists(Parser::class)) {
-            throw new ExtractionException('PDF support is not installed (run composer install)');
-        }
         if (!is_file($path)) {
             throw new ExtractionException("File not found: $path");
         }
