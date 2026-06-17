@@ -1,0 +1,7 @@
+base   totext
+author Andreas Gohr
+email  gohr@cosmocode.de
+date   2026-06-17
+name   totext plugin
+desc   Convert different file formats to text
+url    https://www.dokuwiki.org/plugin:totext

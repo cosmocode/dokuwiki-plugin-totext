@@ -1,0 +1,72 @@
+<?php
+
+namespace dokuwiki\plugin\totext\test;
+
+use dokuwiki\plugin\totext\Extractor\PptxExtractor;
+use DokuWikiTest;
+
+/**
+ * Tests for the PPTX extractor.
+ *
+ * @group plugin_totext
+ */
+class PptxExtractorTest extends DokuWikiTest
+{
+    /** @var string[] */
+    protected $pluginsEnabled = ['totext'];
+
+    /** @var string temp working directory */
+    private $tmp = '';
+
+    /** @var string fixture path */
+    private $fixture = '';
+
+    /** @inheritDoc */
+    public function setUp(): void
+    {
+        parent::setUp();
+        $this->tmp = FixtureBuilder::tempDir();
+        $this->fixture = $this->tmp . '/sample.pptx';
+        FixtureBuilder::buildPptx($this->fixture);
+    }
+
+    /** @inheritDoc */
+    public function tearDown(): void
+    {
+        FixtureBuilder::cleanup($this->tmp);
+        parent::tearDown();
+    }
+
+    public function testExtractsBothSlides()
+    {
+        $text = (new PptxExtractor())->extract($this->fixture);
+        $this->assertStringContainsString('First slide title', $text);
+        $this->assertStringContainsString('Second slide', $text);
+    }
+
+    public function testHonoursSldIdLstOrder()
+    {
+        // Fixture's sldIdLst points rId2 (slide1.xml = "First slide title") FIRST,
+        // then rId1 (slide2.xml = "Second slide"). Display order must reflect that.
+        $text = (new PptxExtractor())->extract($this->fixture);
+        $posFirst = strpos($text, 'First slide title');
+        $posSecond = strpos($text, 'Second slide');
+        $this->assertNotFalse($posFirst);
+        $this->assertNotFalse($posSecond);
+        $this->assertLessThan($posSecond, $posFirst);
+    }
+
+    public function testSlideHeaders()
+    {
+        $text = (new PptxExtractor())->extract($this->fixture);
+        $this->assertStringContainsString('=== Slide 1 ===', $text);
+        $this->assertStringContainsString('=== Slide 2 ===', $text);
+    }
+
+    public function testSupports()
+    {
+        $e = new PptxExtractor();
+        $this->assertTrue($e->supports('foo.pptx'));
+        $this->assertFalse($e->supports('foo.xlsx'));
+    }
+}
