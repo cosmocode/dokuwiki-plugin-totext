@@ -11,13 +11,13 @@ use XMLReader;
  * Each table is rendered under a "=== Sheet: <name> ===" header with
  * tab-separated cells and newline-separated rows, mirroring the XLSX output.
  */
-final class OdsExtractor extends AbstractZipXmlExtractor
+class OdsExtractor extends AbstractZipXmlExtractor
 {
     /** namespace URI for the OpenDocument table vocabulary */
-    private const TABLE_NS = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0';
+    protected const TABLE_NS = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0';
 
     /** safety cap for table:number-columns-repeated to avoid pathological expansion */
-    private const MAX_REPEAT = 1024;
+    protected const MAX_REPEAT = 1024;
 
     /** @inheritDoc */
     protected function extractText(): string
@@ -55,7 +55,7 @@ final class OdsExtractor extends AbstractZipXmlExtractor
      * @param XMLReader $reader positioned on the opening <table:table> element
      * @return string
      */
-    private function extractTable(XMLReader $reader): string
+    protected function extractTable(XMLReader $reader): string
     {
         if ($reader->isEmptyElement) {
             return '';
@@ -108,7 +108,7 @@ final class OdsExtractor extends AbstractZipXmlExtractor
      * @param XMLReader $reader positioned on the opening cell element
      * @return string
      */
-    private function readCellValue(XMLReader $reader): string
+    protected function readCellValue(XMLReader $reader): string
     {
         if ($reader->isEmptyElement) {
             return '';

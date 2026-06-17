@@ -13,7 +13,7 @@ use dokuwiki\Utf8\Conversion;
  * handling defers to DokuWiki's core UTF-8 helpers so behaviour matches the
  * rest of the wiki.
  */
-final class TextExtractor implements ExtractorInterface
+class TextExtractor implements ExtractorInterface
 {
     /** @inheritDoc */
     public function extract(string $path): string

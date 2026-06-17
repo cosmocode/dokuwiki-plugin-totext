@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Exception\UnsupportedFormatException;
 /**
  * Picks the right extractor for a file based on its extension.
  */
-final class ExtractorFactory
+class ExtractorFactory
 {
     /**
      * Maps each supported file extension to its extractor class.
@@ -19,7 +19,7 @@ final class ExtractorFactory
      *
      * @var array<string, class-string<ExtractorInterface>>
      */
-    private const EXTRACTORS = [
+    protected const EXTRACTORS = [
         'docx' => DocxExtractor::class,
         'xlsx' => XlsxExtractor::class,
         'pptx' => PptxExtractor::class,

@@ -8,7 +8,7 @@ use Smalot\PdfParser\Parser;
 /**
  * Extracts text from PDF documents using the bundled smalot/pdfparser.
  */
-final class PdfExtractor implements ExtractorInterface
+class PdfExtractor implements ExtractorInterface
 {
     /** @inheritDoc */
     public function extract(string $path): string

@@ -20,7 +20,7 @@ use XMLReader;
 abstract class AbstractZipXmlExtractor implements ExtractorInterface
 {
     /** @var string path to the temp dir the archive was extracted into */
-    private string $tempDir = '';
+    protected string $tempDir = '';
 
     /**
      * Extract text from the already-unpacked archive (in $this->tempDir).
@@ -220,7 +220,7 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
      * @return string the created directory path
      * @throws ExtractionException if the directory cannot be created
      */
-    private function makeTempDir(): string
+    protected function makeTempDir(): string
     {
         $dir = io_mktmpdir();
         if ($dir === false) {
@@ -237,7 +237,7 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
      *
      * @return void
      */
-    private function cleanup(): void
+    protected function cleanup(): void
     {
         if ($this->tempDir === '') {
             return;

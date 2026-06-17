@@ -11,10 +11,10 @@ use XMLReader;
  * Slides are emitted in presentation order under "=== Slide N ===" headers,
  * each optionally followed by a "--- Notes ---" section.
  */
-final class PptxExtractor extends AbstractZipXmlExtractor
+class PptxExtractor extends AbstractZipXmlExtractor
 {
     /** namespace URI for relationship references */
-    private const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    protected const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
     /** @inheritDoc */
     protected function extractText(): string
@@ -53,7 +53,7 @@ final class PptxExtractor extends AbstractZipXmlExtractor
      *
      * @return string[] internal paths of slides in display order
      */
-    private function getSlideOrder(): array
+    protected function getSlideOrder(): array
     {
         $relsXml = $this->readPart('ppt/_rels/presentation.xml.rels');
         $presXml = $this->readPart('ppt/presentation.xml');
@@ -107,7 +107,7 @@ final class PptxExtractor extends AbstractZipXmlExtractor
      *
      * @return string[] internal slide paths
      */
-    private function fallbackSlideOrder(): array
+    protected function fallbackSlideOrder(): array
     {
         $slides = array_filter(
             $this->listParts('ppt/slides/slide'),
@@ -122,7 +122,7 @@ final class PptxExtractor extends AbstractZipXmlExtractor
      * @param string $slidePath internal slide path
      * @return string|null internal notes path, or null if none
      */
-    private function correspondingNotes(string $slidePath): ?string
+    protected function correspondingNotes(string $slidePath): ?string
     {
         if (!preg_match('#ppt/slides/slide(\d+)\.xml$#', $slidePath, $m)) {
             return null;
@@ -137,7 +137,7 @@ final class PptxExtractor extends AbstractZipXmlExtractor
      * @param string $xml the part XML
      * @return string
      */
-    private function extractSlideText(string $xml): string
+    protected function extractSlideText(string $xml): string
     {
         return $this->extractTextFromXml(
             $xml,

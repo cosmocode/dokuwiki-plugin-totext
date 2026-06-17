@@ -11,10 +11,10 @@ use XMLReader;
  * Each sheet is rendered under a "=== Sheet: <name> ===" header with
  * tab-separated cells and newline-separated rows.
  */
-final class XlsxExtractor extends AbstractZipXmlExtractor
+class XlsxExtractor extends AbstractZipXmlExtractor
 {
     /** namespace URI for relationship references (the r: prefix) */
-    private const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    protected const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
     /** @inheritDoc */
     protected function extractText(): string
@@ -53,7 +53,7 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
      *
      * @return array<int, array{name: string, path: string}>
      */
-    private function loadSheets(): array
+    protected function loadSheets(): array
     {
         $rels = $this->loadWorkbookRels();
         if ($rels !== []) {
@@ -88,7 +88,7 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
      *
      * @return array<int, array{name: string, rid: string}>
      */
-    private function loadWorkbookSheets(): array
+    protected function loadWorkbookSheets(): array
     {
         $xml = $this->readPart('xl/workbook.xml');
         if ($xml === null) {
@@ -121,7 +121,7 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
      *
      * @return array<string, string>
      */
-    private function loadWorkbookRels(): array
+    protected function loadWorkbookRels(): array
     {
         $xml = $this->readPart('xl/_rels/workbook.xml.rels');
         if ($xml === null) {
@@ -153,7 +153,7 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
      *
      * @return string[] shared strings in index order
      */
-    private function loadSharedStrings(): array
+    protected function loadSharedStrings(): array
     {
         $xml = $this->readPart('xl/sharedStrings.xml');
         if ($xml === null) {
@@ -181,7 +181,7 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
      *
      * @return string[] sheet display names
      */
-    private function loadSheetNames(): array
+    protected function loadSheetNames(): array
     {
         $xml = $this->readPart('xl/workbook.xml');
         if ($xml === null) {
@@ -215,7 +215,7 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
      * @return string
      * @throws ExtractionException if the worksheet XML cannot be parsed
      */
-    private function extractSheet(string $xml, array $sharedStrings): string
+    protected function extractSheet(string $xml, array $sharedStrings): string
     {
         $reader = new XMLReader();
         if (!$reader->XML($xml, 'UTF-8', LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
@@ -262,7 +262,7 @@ final class XlsxExtractor extends AbstractZipXmlExtractor
      * @param XMLReader $reader positioned on the opening <c> element
      * @return string
      */
-    private function readCellValue(XMLReader $reader): string
+    protected function readCellValue(XMLReader $reader): string
     {
         if ($reader->isEmptyElement) {
             return '';

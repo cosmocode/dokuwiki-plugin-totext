@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Exception\ExtractionException;
 /**
  * Extracts text from OpenDocument Text (.odt) documents.
  */
-final class OdtExtractor extends AbstractZipXmlExtractor
+class OdtExtractor extends AbstractZipXmlExtractor
 {
     /** @inheritDoc */
     protected function extractText(): string

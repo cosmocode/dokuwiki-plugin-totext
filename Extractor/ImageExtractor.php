@@ -13,7 +13,7 @@ use JpegMeta;
  * JPEG as a fallback) are read through the exif extension. If a file carries no
  * textual metadata, an empty string is returned (it was readable, just empty).
  */
-final class ImageExtractor implements ExtractorInterface
+class ImageExtractor implements ExtractorInterface
 {
     /**
      * Ordered map of output label => candidate JpegMeta field names.
@@ -23,7 +23,7 @@ final class ImageExtractor implements ExtractorInterface
      *
      * @var array<string, string[]>
      */
-    private const JPEG_FIELDS = [
+    protected const JPEG_FIELDS = [
         'Title' => ['Iptc.Headline'],
         'Caption' => ['Iptc.Caption', 'Exif.UserComment', 'Exif.TIFFImageDescription', 'Exif.TIFFUserComment'],
         'Author' => ['Iptc.Byline', 'Exif.TIFFArtist', 'Exif.Artist', 'Iptc.Credit'],
@@ -44,7 +44,7 @@ final class ImageExtractor implements ExtractorInterface
      *
      * @var array<string, string[]>
      */
-    private const EXIF_FIELDS = [
+    protected const EXIF_FIELDS = [
         'Title' => ['Title', 'XPTitle'],
         'Caption' => ['ImageDescription', 'UserComment', 'Comment', 'Subject', 'XPComment', 'XPSubject'],
         'Author' => ['Artist', 'Author', 'XPAuthor'],
@@ -83,7 +83,7 @@ final class ImageExtractor implements ExtractorInterface
      * @param string $path absolute path to the JPEG
      * @return array<string, string> label => value (empty values kept out by caller)
      */
-    private function extractJpeg(string $path): array
+    protected function extractJpeg(string $path): array
     {
         $meta = new JpegMeta($path);
         $out = [];
@@ -101,7 +101,7 @@ final class ImageExtractor implements ExtractorInterface
      * @return array<string, string> label => value
      * @throws ExtractionException if the exif extension is unavailable
      */
-    private function extractExif(string $path): array
+    protected function extractExif(string $path): array
     {
         if (!function_exists('exif_read_data')) {
             throw new ExtractionException('TIFF metadata support requires the PHP exif extension');
@@ -147,7 +147,7 @@ final class ImageExtractor implements ExtractorInterface
      * @param mixed $value the raw value
      * @return string
      */
-    private function normaliseExifValue(string $tag, $value): string
+    protected function normaliseExifValue(string $tag, $value): string
     {
         if (is_array($value)) {
             $value = implode(', ', array_filter(array_map('strval', $value), fn($v) => $v !== ''));

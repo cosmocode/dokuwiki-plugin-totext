@@ -11,7 +11,7 @@ use XMLReader;
  * Each draw:page is treated as a slide and emitted under a "=== Slide N ==="
  * header, mirroring the PPTX output.
  */
-final class OdpExtractor extends AbstractZipXmlExtractor
+class OdpExtractor extends AbstractZipXmlExtractor
 {
     /** @inheritDoc */
     protected function extractText(): string
@@ -48,7 +48,7 @@ final class OdpExtractor extends AbstractZipXmlExtractor
      * @param XMLReader $reader positioned on the opening <draw:page> element
      * @return string
      */
-    private function extractPage(XMLReader $reader)
+    protected function extractPage(XMLReader $reader)
     {
         if ($reader->isEmptyElement) {
             return '';

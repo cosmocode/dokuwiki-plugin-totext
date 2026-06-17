@@ -7,7 +7,7 @@ use dokuwiki\plugin\totext\Exception\ExtractionException;
 /**
  * Extracts text from Word (.docx) documents.
  */
-final class DocxExtractor extends AbstractZipXmlExtractor
+class DocxExtractor extends AbstractZipXmlExtractor
 {
     /** @inheritDoc */
     protected function extractText(): string
@@ -47,7 +47,7 @@ final class DocxExtractor extends AbstractZipXmlExtractor
      * @param string $xml the part XML
      * @return string
      */
-    private function extractDocxText(string $xml): string
+    protected function extractDocxText(string $xml): string
     {
         return $this->extractTextFromXml(
             $xml,
