@@ -2,18 +2,20 @@
 
 namespace dokuwiki\plugin\totext\test;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use splitbrain\PHPArchive\Zip;
+
 /**
  * Helpers for tests that run against the committed real-world sample files in
  * _test/data.
  *
  * This is deliberately NOT a fixture builder: it never fabricates office
- * container structures. The samples are produced by real applications
- * (LibreOffice, ImageMagick + exiftool — see data/regenerate.sh), so the
- * extractors are exercised against the byte layout real software emits.
- *
- * For error-path tests it derives broken inputs from those real files — a
- * genuine container with one part removed, or plain non-archive bytes — which
- * likewise requires no knowledge of the internal format.
+ * container structures. The samples are real documents taken verbatim from the
+ * Apache Tika test corpus (see data/README.md for provenance). For error-path
+ * tests it derives broken inputs from those real files — a genuine container
+ * with one part removed, or plain non-archive bytes.
  */
 class Samples
 {
@@ -32,59 +34,56 @@ class Samples
     }
 
     /**
-     * Create a fresh temporary directory for derived or throwaway files.
+     * Build a copy of a committed sample with one ZIP member removed.
      *
-     * @return string the directory path
-     */
-    public static function tempDir(): string
-    {
-        return io_mktmpdir();
-    }
-
-    /**
-     * Recursively remove a temporary directory.
-     *
-     * @param string $dir directory to remove
-     * @return void
-     */
-    public static function cleanup(string $dir): void
-    {
-        if ($dir !== '') {
-            io_rmdir($dir, true);
-        }
-    }
-
-    /**
-     * Copy a committed sample into $destDir with one ZIP member removed.
-     *
-     * Builds a "real container missing a required part" input for error-path
-     * tests, starting from a genuine file rather than a hand-built archive.
+     * Produces a "real container missing a required part" input for error-path
+     * tests, starting from a genuine file rather than a hand-built archive. Uses
+     * DokuWiki's bundled php-archive (no dependency on PHP's ext-zip): the
+     * original is unpacked with the part excluded, then repacked.
      *
      * @param string $sample committed sample file name (a ZIP container)
      * @param string $part internal path of the member to drop
-     * @param string $destDir directory to write the copy into
-     * @return string path to the derived copy
+     * @return string path to the derived copy (in a fresh temp dir)
      */
-    public static function withoutPart(string $sample, string $part, string $destDir): string
+    public static function withoutPart(string $sample, string $part): string
     {
-        $dest = $destDir . '/' . $sample;
-        copy(self::path($sample), $dest);
-        $zip = new \ZipArchive();
-        $zip->open($dest);
-        $zip->deleteName($part);
-        $zip->close();
+        $tmp = io_mktmpdir();
+        $work = $tmp . '/unpacked';
+
+        $unzip = new Zip();
+        $unzip->open(self::path($sample));
+        $unzip->extract($work, '', '/^' . preg_quote($part, '/') . '$/');
+
+        $dest = $tmp . '/' . $sample;
+        $rezip = new Zip();
+        $rezip->create($dest);
+        $base = $work . '/';
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($work, FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($it as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+            $rel = str_replace('\\', '/', substr($file->getPathname(), strlen($base)));
+            $rezip->addFile($file->getPathname(), $rel);
+        }
+        $rezip->close();
+
         return $dest;
     }
 
     /**
      * Write non-archive garbage bytes to simulate a corrupt container.
      *
-     * @param string $destPath path to write
-     * @return string the written path
+     * @param string $ext extension to give the file, so callers that route by
+     *                     extension (e.g. ExtractorFactory) reach the right extractor
+     * @return string path to the written file (in a fresh temp dir)
      */
-    public static function corrupt(string $destPath): string
+    public static function corrupt(string $ext = 'docx'): string
     {
-        file_put_contents($destPath, 'this is not a valid office container');
-        return $destPath;
+        $path = io_mktmpdir() . '/corrupt.' . $ext;
+        file_put_contents($path, 'this is not a valid office container');
+        return $path;
     }
 }

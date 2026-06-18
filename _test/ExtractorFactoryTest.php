@@ -7,14 +7,8 @@ use dokuwiki\plugin\totext\Exception\UnsupportedFormatException;
 use dokuwiki\plugin\totext\Extractor\DocxExtractor;
 use dokuwiki\plugin\totext\Extractor\ExtractorFactory;
 use dokuwiki\plugin\totext\Extractor\ExtractorInterface;
-use dokuwiki\plugin\totext\Extractor\ImageExtractor;
-use dokuwiki\plugin\totext\Extractor\OdpExtractor;
-use dokuwiki\plugin\totext\Extractor\OdsExtractor;
 use dokuwiki\plugin\totext\Extractor\OdtExtractor;
 use dokuwiki\plugin\totext\Extractor\PdfExtractor;
-use dokuwiki\plugin\totext\Extractor\PptxExtractor;
-use dokuwiki\plugin\totext\Extractor\TextExtractor;
-use dokuwiki\plugin\totext\Extractor\XlsxExtractor;
 use DokuWikiTest;
 
 /**
@@ -34,48 +28,39 @@ class ExtractorFactoryTest extends DokuWikiTest
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = Samples::tempDir();
+        $this->tmp = io_mktmpdir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        Samples::cleanup($this->tmp);
+        io_rmdir($this->tmp, true);
         parent::tearDown();
     }
 
     /**
-     * Extension => expected extractor class.
+     * forFile() lowercases the extension and ignores the directory part, so these
+     * mixed-case names and full paths must still route to the right extractor.
+     *
+     * The plain extension => class mappings live in EXTRACTORS and are exercised
+     * via testEveryAdvertisedExtensionRoutes; re-listing them here would only
+     * duplicate that map, so this covers just the normalisation logic.
      *
      * @return array<string, array{0: string, 1: class-string}>
      */
-    public function provideRouting(): array
+    public function provideCaseAndPath(): array
     {
         return [
-            'docx' => ['foo.docx', DocxExtractor::class],
-            'xlsx' => ['foo.xlsx', XlsxExtractor::class],
-            'pptx' => ['foo.pptx', PptxExtractor::class],
-            'pdf' => ['foo.pdf', PdfExtractor::class],
-            'odt' => ['foo.odt', OdtExtractor::class],
-            'ods' => ['foo.ods', OdsExtractor::class],
-            'odp' => ['foo.odp', OdpExtractor::class],
-            'txt' => ['foo.txt', TextExtractor::class],
-            'md' => ['foo.md', TextExtractor::class],
-            'markdown' => ['foo.markdown', TextExtractor::class],
-            'log' => ['foo.log', TextExtractor::class],
-            'jpg' => ['foo.jpg', ImageExtractor::class],
-            'jpeg' => ['foo.jpeg', ImageExtractor::class],
-            'tiff' => ['foo.tiff', ImageExtractor::class],
-            'uppercase docx' => ['foo.DOCX', DocxExtractor::class],
-            'uppercase pdf' => ['FOO.PDF', PdfExtractor::class],
-            'path with dirs' => ['/var/data/My File.ODT', OdtExtractor::class],
+            'uppercase extension' => ['foo.DOCX', DocxExtractor::class],
+            'uppercase name and extension' => ['FOO.PDF', PdfExtractor::class],
+            'full path with dirs and spaces' => ['/var/data/My File.ODT', OdtExtractor::class],
         ];
     }
 
     /**
-     * @dataProvider provideRouting
+     * @dataProvider provideCaseAndPath
      */
-    public function testForFileRoutesByExtension(string $path, string $expected)
+    public function testForFileNormalisesCaseAndPath(string $path, string $expected)
     {
         $this->assertInstanceOf($expected, ExtractorFactory::forFile($path));
     }
@@ -140,14 +125,14 @@ class ExtractorFactoryTest extends DokuWikiTest
     public function provideRoundtrip(): array
     {
         return [
-            'docx' => ['sample.docx', 'Totext Sample Document'],
-            'xlsx' => ['sample.xlsx', 'Widget'],
-            'pptx' => ['sample.pptx', 'Slide One Title'],
-            'pdf' => ['sample.pdf', 'Totext Sample Document'],
-            'odt' => ['sample.odt', 'Totext Sample Document'],
-            'ods' => ['sample.ods', 'Widget'],
-            'odp' => ['sample.odp', 'Slide One Title'],
-            'txt' => ['sample.txt', 'Plain text sample'],
+            'docx' => ['tika-sample.docx', 'Sample Word Document Title'],
+            'xlsx' => ['tika-sample.xlsx', 'Number'],
+            'pptx' => ['tika-sample.pptx', 'Rajiv'],
+            'pdf' => ['tika-sample.pdf', 'Apache Tika is a toolkit'],
+            'odt' => ['tika-sample.odt', 'sample Open Office document'],
+            'ods' => ['tika-sample.ods', 'example'],
+            'odp' => ['tika-sample.odp', 'An example Impress file'],
+            'txt' => ['tika-sample.txt', 'quick brown fox'],
         ];
     }
 
@@ -162,7 +147,13 @@ class ExtractorFactoryTest extends DokuWikiTest
     public function testCorruptDocxRaisesExtractionException()
     {
         $this->expectException(ExtractionException::class);
-        ExtractorFactory::extract(Samples::corrupt($this->tmp . '/bad.docx'));
+        ExtractorFactory::extract(Samples::corrupt('docx'));
+    }
+
+    public function testMissingFileRaisesExtractionException()
+    {
+        $this->expectException(ExtractionException::class);
+        ExtractorFactory::extract($this->tmp . '/nope.docx');
     }
 
     public function testSupportedExtensionsListsKnownFormats()

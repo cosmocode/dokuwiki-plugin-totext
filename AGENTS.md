@@ -83,32 +83,42 @@ Each test run will provide a fresh DokuWiki instance in a temporary directory vi
 
 ### Test fixtures
 
-**All tests run against real files — never hand-built containers.** A
-hand-authored fixture only encodes our *belief* about a format; if that belief
-is wrong the extractor is written to match and both agree on a fiction. So
-every sample is produced by a real application and committed under `_test/data`.
-`_test` is `export-ignore`d, so these binaries never ship in release tarballs.
+**All tests run against real files — never hand-built containers, never
+synthetic content.** A hand-authored fixture only encodes our *belief* about a
+format; if that belief is wrong the extractor is written to match and both agree
+on a fiction. So every sample is a genuine in-the-wild document, taken verbatim
+from the **Apache Tika test corpus** (Apache-2.0) and committed under
+`_test/data`. `_test` is `export-ignore`d, so these binaries never ship in
+release tarballs — only the git repo holds them.
 
-* **Generation** — `_test/data/regenerate.sh` rebuilds the edge-case samples
-  from the plain-text sources authored inline in that script: LibreOffice
-  headless converts flat-ODF (`.fodt`/`.fods`/`.fodp`) to the office formats,
-  and ImageMagick + exiftool produce the images. Requires `soffice`, `exiftool`,
-  `magick`. The shared-source happy-path files (`sample.docx`, `sample.xlsx`, …
-  used by `SampleFilesTest`) are committed as-is and not rebuilt by the script.
-* **What the samples cover** — `sample.*` (one shared source text across
-  docx/xlsx/pptx/odt/ods/odp/pdf/txt) for the happy path; `formatting.docx`/
-  `formatting.odt` (heading, in-paragraph tab, line break, plus DOCX
-  header/footer); `multi-sheet.xlsx` (tab order + name↔file resolution);
-  `notes.pptx` (speaker notes); `rich.ods` (merged/covered cells,
-  multi-paragraph cell, in-cell tab); `meta.jpg` (IPTC), `meta.tiff`
-  (EXIF incl. a UTF-16LE XP tag), `plain.jpg` (no metadata).
+* **Provenance** — `_test/data/README.md` records, for every committed file, its
+  original Tika name + upstream path + license. Keep it accurate when files
+  change: committing third-party binaries here is fine *only* with that record.
+* **Refresh** — `_test/data/download.sh` re-downloads each file from its exact
+  upstream Tika path (needs only `curl`). The committed copies are authoritative;
+  the script just refreshes them and must reproduce them byte-for-byte. Every
+  committed file keeps a `tika-` filename prefix to mark its origin.
+* **What the samples cover** — `tika-sample.docx` (titles, headings, nested
+  tables, hyperlinks, custom style, header/footer); `tika-various.docx` (lists,
+  footnotes, Japanese + four-byte Gothic = multibyte UTF-8); `tika-sample.xlsx`
+  (three named sheets, tab-separated cells); `tika-sample.pptx` (three ordered
+  slides); `tika-various.pptx` (speaker notes); `tika-sample.odt` (one
+  paragraph); `tika-sample.ods` (numeric grid); `tika-sample.odp` (two slides);
+  `tika-sample.pdf` (the Tika homepage, full prose); `tika-meta.jpg` (Photoshop
+  IPTC caption/by-line/keywords + EXIF camera — IPTC is non-UTF-8, so only
+  ASCII-safe substrings are asserted); `tika-meta.tiff` (EXIF ImageDescription);
+  `tika-plain.jpg` (no metadata → empty string); `tika-sample.txt` (multilingual
+  UTF-8 pangram).
 * **Error-path tests** — derived from real files, not fabricated: `Samples.php`
-  exposes `withoutPart()` (copy a real container and drop one ZIP member, e.g. a
-  DOCX missing `word/document.xml`) and `corrupt()` (non-archive bytes), plus
-  `path()`/`tempDir()`/`cleanup()`. There is no fixture *builder*.
-* **Scenarios real tools cannot produce are not tested** — e.g. an unnamed ODS
-  sheet or a repeated *filled-text* cell. LibreOffice never emits them, so
-  testing them would mean asserting against invented structures.
+  exposes `withoutPart()` (unpack a real container minus one ZIP member and repack
+  it via php-archive, e.g. a DOCX missing `word/document.xml`) and `corrupt()`
+  (non-archive bytes); both manage their own temp files, and `path()` resolves a
+  committed sample. There is no fixture *builder*.
+* **Edges no clean real file covers are not tested** — deliberately dropped when
+  the corpus had no document that targets them without inventing structure: XLSX
+  custom sheet-name↔file *re*ordering (only normal multi-sheet order is tested),
+  ODS merged/covered cells + multi-paragraph cells, and the Windows XP UTF-16LE
+  EXIF tag. Asserting these would mean asserting against invented inputs.
 
 ### Format-specific gotchas learned
 
@@ -122,7 +132,9 @@ every sample is produced by a real application and committed under `_test/data`.
   XP tags and exposes them in a `WINXP` section under the short names
   `Title`/`Comment`/`Author`/`Keywords`/`Subject` (UTF-8) — NOT as `XPTitle`
   etc. `ImageExtractor::EXIF_FIELDS` lists the short names first and keeps the
-  `XP*` raw names as a cross-version fallback.
+  `XP*` raw names (decoded from UTF-16LE by `normaliseExifValue()`) as a
+  cross-version fallback. This path still exists but is **no longer covered by a
+  fixture** — no real image in the corpus carries Windows XP tags.
 
 **Important:** Test classes that need the plugin must set `protected $pluginsEnabled = ['totext'];` to enable it in the test environment.
 

@@ -23,27 +23,27 @@ class PdfExtractorTest extends DokuWikiTest
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = Samples::tempDir();
+        $this->tmp = io_mktmpdir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        Samples::cleanup($this->tmp);
+        io_rmdir($this->tmp, true);
         parent::tearDown();
     }
 
     public function testExtractsText()
     {
-        $text = (new PdfExtractor())->extract(Samples::path('sample.pdf'));
-        $this->assertStringContainsString('Totext Sample Document', $text);
-        $this->assertStringContainsString('The quick brown fox jumps over the lazy dog.', $text);
+        $text = (new PdfExtractor())->extract(Samples::path('tika-sample.pdf'));
+        $this->assertStringContainsString('Tika - Content Analysis Toolkit', $text);
+        $this->assertStringContainsString('Apache Tika is a toolkit', $text);
     }
 
     public function testCorruptFileThrows()
     {
         $this->expectException(ExtractionException::class);
-        (new PdfExtractor())->extract(Samples::corrupt($this->tmp . '/corrupt.pdf'));
+        (new PdfExtractor())->extract(Samples::corrupt('pdf'));
     }
 
     public function testMissingFileThrows()

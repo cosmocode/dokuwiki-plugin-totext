@@ -26,14 +26,23 @@ class TextExtractorTest extends DokuWikiTest
     public function setUp(): void
     {
         parent::setUp();
-        $this->tmp = Samples::tempDir();
+        $this->tmp = io_mktmpdir();
     }
 
     /** @inheritDoc */
     public function tearDown(): void
     {
-        Samples::cleanup($this->tmp);
+        io_rmdir($this->tmp, true);
         parent::tearDown();
+    }
+
+    public function testReadsRealSampleFile()
+    {
+        // tika-sample.txt is a multilingual UTF-8 pangram; the multibyte text must survive
+        $text = (new TextExtractor())->extract(Samples::path('tika-sample.txt'));
+        $this->assertStringContainsString('The quick brown fox jumps over the lazy dog', $text);
+        $this->assertStringContainsString('über', $text);
+        $this->assertStringContainsString('براون', $text);
     }
 
     public function testReadsPlainText()
