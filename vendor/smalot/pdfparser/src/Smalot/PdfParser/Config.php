@@ -32,6 +32,8 @@
 
 namespace Smalot\PdfParser;
 
+use Smalot\PdfParser\Exception\MemoryLimitException;
+
 /**
  * This class contains configurations used in various classes. You can override them
  * manually, in case default values aren't working.
@@ -88,6 +90,32 @@ class Config
      * @var bool
      */
     private $ignoreEncryption = false;
+
+    /**
+     * Whether decoded object stream content is spooled to a temporary file
+     * instead of being kept in memory. Trades disk I/O for a lower peak memory
+     * footprint when parsing large documents.
+     *
+     * @var bool
+     */
+    private $contentSpooling = false;
+
+    /**
+     * Minimum free headroom, expressed as a percentage (0-100) of the PHP
+     * `memory_limit`, that must remain available while parsing. Once memory
+     * usage rises above (100 - headroom)% of the limit, a MemoryLimitException
+     * is thrown.
+     *
+     * A value of 0 (the default) disables the memory guard entirely, so the
+     * feature is strictly opt-in and existing behaviour is unchanged. A typical
+     * value is 10, which aborts once usage reaches 90% of the limit.
+     *
+     * The guard is also a no-op when no finite limit can be determined, i.e.
+     * when the PHP `memory_limit` ini setting is unlimited (-1).
+     *
+     * @var int
+     */
+    private $memoryLimitHeadroomPercent = 0;
 
     public function getFontSpaceLimit()
     {
@@ -171,5 +199,177 @@ class Config
     public function setIgnoreEncryption(bool $ignoreEncryption): void
     {
         $this->ignoreEncryption = $ignoreEncryption;
+    }
+
+    public function getContentSpooling(): bool
+    {
+        return $this->contentSpooling;
+    }
+
+    public function setContentSpooling(bool $contentSpooling): void
+    {
+        $this->contentSpooling = $contentSpooling;
+    }
+
+    public function getMemoryLimitHeadroomPercent(): int
+    {
+        return $this->memoryLimitHeadroomPercent;
+    }
+
+    /**
+     * @param int $memoryLimitHeadroomPercent minimum free headroom (0-100) of
+     *                                        the memory limit to keep available;
+     *                                        0 disables the memory guard
+     *
+     * @throws \InvalidArgumentException if the value is outside the 0-100 range
+     */
+    public function setMemoryLimitHeadroomPercent(int $memoryLimitHeadroomPercent): void
+    {
+        if ($memoryLimitHeadroomPercent < 0 || $memoryLimitHeadroomPercent > 100) {
+            throw new \InvalidArgumentException(
+                'Memory limit headroom must be a percentage between 0 and 100.'
+            );
+        }
+
+        $this->memoryLimitHeadroomPercent = $memoryLimitHeadroomPercent;
+    }
+
+    /**
+     * Abort with a MemoryLimitException if the current memory usage has reached
+     * the configured headroom limit.
+     *
+     * This is meant to be called at the heavy steps of the parsing process so a
+     * document that is too large for the available memory fails with a
+     * catchable exception instead of an uncatchable PHP out-of-memory fatal
+     * error. The check returns immediately (a single comparison) when the guard
+     * is disabled, so it is cheap to call from within hot loops.
+     *
+     * @throws MemoryLimitException when less than the configured headroom remains
+     *
+     * @internal
+     */
+    public function checkMemoryUsage(): void
+    {
+        $threshold = $this->getMemoryThreshold();
+        // Guard disabled or no finite limit: nothing to do.
+        if ($threshold < 0) {
+            return;
+        }
+
+        $usage = memory_get_usage(true);
+
+        if ($usage >= $threshold) {
+            throw new MemoryLimitException(\sprintf(
+                'Memory usage (%d bytes) exceeded the configured headroom limit',
+                $usage
+            ));
+        }
+    }
+
+    /**
+     * Number of bytes that may still be allocated before the configured
+     * headroom limit is reached.
+     *
+     * This is meant to bound a single large allocation (e.g. decompressing one
+     * stream) to what actually fits in memory. A return value of 0 means "no
+     * limit" - either the guard is disabled or no finite memory limit could be
+     * determined - matching the "0 = unlimited" convention used by
+     * getDecodeMemoryLimit() and gzuncompress(). When usage has already reached
+     * the threshold, 1 is returned so any non-trivial allocation is refused.
+     *
+     * @internal
+     */
+    public function getRemainingHeadroom(): int
+    {
+        $threshold = $this->getMemoryThreshold();
+        if ($threshold < 0) {
+            return 0;
+        }
+
+        $remaining = $threshold - memory_get_usage(true);
+
+        return $remaining > 0 ? $remaining : 1;
+    }
+
+    /**
+     * The byte budget for a single stream decode: the tighter of the configured
+     * decode limit (getDecodeMemoryLimit()) and the live memory headroom
+     * (0 means "no limit").
+     *
+     * This bounds an oversized stream to the memory we have left even when no
+     * explicit decode limit was configured.
+     */
+    public function getEffectiveDecodeMemoryLimit(): int
+    {
+        $headroom = $this->getRemainingHeadroom();
+
+        // Return the tighter of the two, treating 0 as "no limit" (the
+        // convention used by gzuncompress() and getDecodeMemoryLimit()).
+        if ($this->decodeMemoryLimit <= 0) {
+            return $headroom;
+        }
+        if ($headroom <= 0) {
+            return $this->decodeMemoryLimit;
+        }
+
+        return min($this->decodeMemoryLimit, $headroom);
+    }
+
+    /**
+     * The memory usage ceiling, in bytes, above which the guard trips.
+     *
+     * Returns -1 when the guard is disabled (headroom percentage of 0) or when
+     * no finite memory limit can be determined (memory_limit = -1).
+     */
+    private function getMemoryThreshold(): int
+    {
+        // Guard disabled (the default).
+        if ($this->memoryLimitHeadroomPercent <= 0) {
+            return -1;
+        }
+
+        $limit = self::parseMemoryLimitString((string) \ini_get('memory_limit'));
+        // No finite limit to compare against.
+        if ($limit <= 0) {
+            return -1;
+        }
+
+        return (int) ($limit * (100 - $this->memoryLimitHeadroomPercent) / 100);
+    }
+
+    /**
+     * Convert a PHP `memory_limit` style string (e.g. "256M", "1G", "-1") into
+     * a number of bytes. Returns -1 for "unlimited".
+     */
+    public static function parseMemoryLimitString(string $value): int
+    {
+        $value = trim($value);
+        if ('' === $value) {
+            return -1;
+        }
+
+        // A leading numeric part is required; anything else is treated as
+        // "unlimited" to err on the side of not throwing spuriously.
+        if (!preg_match('/^(-?\d+)\s*([kmg]?)$/i', $value, $matches)) {
+            return -1;
+        }
+
+        $bytes = (int) $matches[1];
+        if ($bytes < 0) {
+            return -1;
+        }
+
+        switch (strtolower($matches[2])) {
+            case 'g':
+                $bytes *= 1024;
+                // no break
+            case 'm':
+                $bytes *= 1024;
+                // no break
+            case 'k':
+                $bytes *= 1024;
+        }
+
+        return $bytes;
     }
 }

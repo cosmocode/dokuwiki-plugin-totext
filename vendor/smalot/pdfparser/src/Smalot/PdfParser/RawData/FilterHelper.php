@@ -42,11 +42,23 @@
 
 namespace Smalot\PdfParser\RawData;
 
+use Smalot\PdfParser\Config;
+use Smalot\PdfParser\Exception\MemoryLimitException;
 use Smalot\PdfParser\Exception\NotImplementedException;
 
 class FilterHelper
 {
     protected $availableFilters = ['ASCIIHexDecode', 'ASCII85Decode', 'LZWDecode', 'FlateDecode', 'RunLengthDecode'];
+
+    /**
+     * @var Config
+     */
+    private $config;
+
+    public function __construct(?Config $config = null)
+    {
+        $this->config = $config ?? new Config();
+    }
 
     /**
      * Decode data using the specified filter type.
@@ -59,7 +71,7 @@ class FilterHelper
      * @throws \Exception
      * @throws \Smalot\PdfParser\Exception\NotImplementedException if a certain decode function is not implemented yet
      */
-    public function decodeFilter(string $filter, string $data, int $decodeMemoryLimit = 0): string
+    public function decodeFilter(string $filter, string $data): string
     {
         switch ($filter) {
             case 'ASCIIHexDecode':
@@ -72,7 +84,7 @@ class FilterHelper
                 return $this->decodeFilterLZWDecode($data);
 
             case 'FlateDecode':
-                return $this->decodeFilterFlateDecode($data, $decodeMemoryLimit);
+                return $this->decodeFilterFlateDecode($data);
 
             case 'RunLengthDecode':
                 return $this->decodeFilterRunLengthDecode($data);
@@ -178,6 +190,10 @@ class FilterHelper
 
         // for each byte
         for ($i = 0; $i < $data_length; ++$i) {
+            // check memory limit every 8KB
+            if (0 === ($i % 8192)) {
+                $this->config->checkMemoryUsage();
+            }
             // get char value
             $char = \ord($data[$i]);
             if (122 == $char) { // 'z'
@@ -255,18 +271,20 @@ class FilterHelper
      *
      * Decompresses data encoded using the zlib/deflate compression method, reproducing the original text or binary data.
      *
-     * @param string $data              Data to decode
-     * @param int    $decodeMemoryLimit Memory limit on deflation
+     * @param string $data Data to decode
      *
      * @return string data string
      *
      * @throws \Exception
      */
-    protected function decodeFilterFlateDecode(string $data, int $decodeMemoryLimit): ?string
+    protected function decodeFilterFlateDecode(string $data): ?string
     {
-        // Uncatchable E_WARNING for "data error" is @ suppressed
-        // so execution may proceed with an alternate decompression
-        // method.
+        $decodeMemoryLimit = $this->config->getEffectiveDecodeMemoryLimit();
+
+        // Uncatchable E_WARNING for "data error" is @ suppressed so execution
+        // may proceed with an alternate decompression method. gzuncompress()
+        // returns the COMPLETE output, or false if it would exceed
+        // $decodeMemoryLimit; it never returns a partial result.
         $decoded = @gzuncompress($data, $decodeMemoryLimit);
 
         if (false === $decoded) {
@@ -290,6 +308,12 @@ class FilterHelper
         if (false === \is_string($decoded) || '' === $decoded) {
             // If the decoded string is empty, that means decoding failed.
             throw new \Exception('decodeFilterFlateDecode: invalid data');
+        } elseif ($decodeMemoryLimit > 0 && \strlen($decoded) >= $decodeMemoryLimit) {
+            // if there was read exactly (or more) than the allowed number of bytes,
+            // the stream was too large to decode within the allowed memory limit
+            throw new MemoryLimitException(
+                'decodeFilterFlateDecode: stream too large to decode within the allowed limit.'
+            );
         }
 
         return $decoded;
@@ -313,6 +337,11 @@ class FilterHelper
         // convert string to binary string
         $bitstring = '';
         for ($i = 0; $i < $data_length; ++$i) {
+            // building the bit string already inflates the data 8x; check
+            // periodically so a huge input cannot exhaust memory here
+            if (0 === ($i % 8192)) {
+                $this->config->checkMemoryUsage();
+            }
             $bitstring .= \sprintf('%08b', \ord($data[$i]));
         }
         // get the number of bits
@@ -328,8 +357,15 @@ class FilterHelper
         }
         // previous val
         $prev_index = 0;
+        // number of processed codes, used to throttle the memory guard
+        $iteration = 0;
         // while we encounter EOD marker (257), read code_length bits
         while (($data_length > 0) && (257 != ($index = bindec(substr($bitstring, 0, $bitlen))))) {
+            // a malformed/expanding stream can grow $decoded without bound;
+            // interrupt periodically if it gets too close to the memory limit
+            if (0 === (++$iteration % 8192)) {
+                $this->config->checkMemoryUsage();
+            }
             // remove read bits from string
             $bitstring = substr($bitstring, $bitlen);
             // update number of bits
@@ -393,7 +429,13 @@ class FilterHelper
         // data length
         $data_length = \strlen($data);
         $i = 0;
+        $iteration = 0;
         while ($i < $data_length) {
+            // a run-length stream can expand up to 128x per block; interrupt
+            // periodically if $decoded gets too close to the memory limit
+            if (0 === (++$iteration % 8192)) {
+                $this->config->checkMemoryUsage();
+            }
             // get current byte value
             $byte = \ord($data[$i]);
             if (128 == $byte) {

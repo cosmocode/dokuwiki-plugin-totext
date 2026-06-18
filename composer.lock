@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4a5d3012c859d6e0ac11acc00049baed",
+    "content-hash": "1bb127ca989847190f26ed3e1ce169ef",
     "packages": [
         {
             "name": "smalot/pdfparser",
-            "version": "v2.12.5",
+            "version": "dev-memory",
             "source": {
                 "type": "git",
-                "url": "https://github.com/smalot/pdfparser.git",
-                "reference": "2cfa0d92bd557875c9f52a75fde0e8392302a354"
+                "url": "https://github.com/cosmocode/pdfparser.git",
+                "reference": "ac6fd8b907dc518b5e6302dd009926630f29319c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/smalot/pdfparser/zipball/2cfa0d92bd557875c9f52a75fde0e8392302a354",
-                "reference": "2cfa0d92bd557875c9f52a75fde0e8392302a354",
+                "url": "https://api.github.com/repos/cosmocode/pdfparser/zipball/ac6fd8b907dc518b5e6302dd009926630f29319c",
+                "reference": "ac6fd8b907dc518b5e6302dd009926630f29319c",
                 "shasum": ""
             },
             "require": {
@@ -32,7 +32,12 @@
                     "Smalot\\PdfParser\\": "src/"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
+            "autoload-dev": {
+                "psr-4": {
+                    "PerformanceTests\\": "tests/Performance/",
+                    "PHPUnitTests\\": "tests/PHPUnit/"
+                }
+            },
             "license": [
                 "LGPL-3.0"
             ],
@@ -45,17 +50,17 @@
             "description": "Pdf parser library. Can read and extract information from pdf file.",
             "homepage": "https://www.pdfparser.org",
             "keywords": [
+                "PDF",
                 "extract",
                 "parse",
                 "parser",
-                "pdf",
                 "text"
             ],
             "support": {
                 "issues": "https://github.com/smalot/pdfparser/issues",
-                "source": "https://github.com/smalot/pdfparser/tree/v2.12.5"
+                "source": "https://github.com/cosmocode/pdfparser/tree/memory"
             },
-            "time": "2026-04-17T11:37:58+00:00"
+            "time": "2026-06-18T20:49:29+00:00"
         },
         {
             "name": "symfony/polyfill-mbstring",
@@ -146,7 +151,9 @@
     "packages-dev": [],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {},
+    "stability-flags": {
+        "smalot/pdfparser": 20
+    },
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {

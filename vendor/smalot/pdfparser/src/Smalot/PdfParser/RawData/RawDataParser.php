@@ -44,6 +44,7 @@ namespace Smalot\PdfParser\RawData;
 
 use Smalot\PdfParser\Config;
 use Smalot\PdfParser\Exception\EmptyPdfException;
+use Smalot\PdfParser\Exception\MemoryLimitException;
 use Smalot\PdfParser\Exception\MissingPdfHeaderException;
 
 class RawDataParser
@@ -76,8 +77,8 @@ class RawDataParser
         // merge given array with default values
         $this->cfg = array_merge($this->cfg, $cfg);
 
-        $this->filterHelper = new FilterHelper();
         $this->config = $config ?: new Config();
+        $this->filterHelper = new FilterHelper($this->config);
     }
 
     /**
@@ -93,6 +94,10 @@ class RawDataParser
      */
     protected function decodeStream(string $pdfData, array $xref, array $sdic, string $stream): array
     {
+        // bail out before starting a potentially large decode if we
+        // are already close to the configured memory limit.
+        $this->config->checkMemoryUsage();
+
         // get stream length and filters
         $slength = \strlen($stream);
         if ($slength <= 0) {
@@ -131,7 +136,11 @@ class RawDataParser
         foreach ($filters as $filter) {
             if (\in_array($filter, $this->filterHelper->getAvailableFilters(), true)) {
                 try {
-                    $stream = $this->filterHelper->decodeFilter($filter, $stream, $this->config->getDecodeMemoryLimit());
+                    $stream = $this->filterHelper->decodeFilter($filter, $stream);
+                } catch (MemoryLimitException $e) {
+                    // A memory abort must never be swallowed by the filter error
+                    // handling below; propagate it so the caller can react.
+                    throw $e;
                 } catch (\Exception $e) {
                     $emsg = $e->getMessage();
                     if ((('~' == $emsg[0]) && !$this->cfg['ignore_missing_filter_decoders'])
@@ -351,6 +360,7 @@ class RawDataParser
                 $prev_row = array_fill(0, $rowlen, 0);
                 // for each row apply PNG unpredictor
                 foreach ($sdata as $k => $row) {
+                    $this->config->checkMemoryUsage();
                     // initialize new row
                     $ddata[$k] = [];
                     // get PNG predictor value
@@ -569,6 +579,7 @@ class RawDataParser
         $i = 0; // object main index
         $header = null;
         do {
+            $this->config->checkMemoryUsage();
             $oldOffset = $offset;
             // get element
             $element = $this->getRawObject($pdfData, $offset, null != $header ? $header[1] : null);
@@ -945,16 +956,21 @@ class RawDataParser
     }
 
     /**
-     * Parses PDF data and returns extracted data as array.
+     * Normalize the raw PDF data and decode the cross-reference/trailer data.
+     *
+     * Returns the xref/trailer data together with the normalized PDF data so
+     * callers (e.g. Parser) can inspect the trailer (for instance to detect
+     * encryption) and then stream the objects one at a time via
+     * getObjectsStream() instead of materializing them all at once.
      *
      * @param string $data PDF data to parse
      *
-     * @return array array of parsed PDF document objects
+     * @return array{0: array, 1: string} [$xref, $pdfData]
      *
      * @throws EmptyPdfException if empty PDF data given
      * @throws MissingPdfHeaderException if PDF data missing `%PDF-` header
      */
-    public function parseData(string $data): array
+    public function parseHeaderAndXref(string $data): array
     {
         if (empty($data)) {
             throw new EmptyPdfException('Empty PDF data given.');
@@ -976,15 +992,31 @@ class RawDataParser
             $xref = $this->getXrefData($pdfData);
         }
 
-        // parse all document objects
-        $objects = [];
+        return [$xref, $pdfData];
+    }
+
+    /**
+     * Yield each indirect object's raw structure one at a time.
+     *
+     * Yielding (rather than returning a fully built array) lets the consumer
+     * build its own representation of an object and discard the raw structure
+     * before the next one is parsed, so the complete raw object graph - by far
+     * the largest transient structure when parsing a document - never has to be
+     * held in memory at once.
+     *
+     * @param string $pdfData normalized PDF data, as returned by parseHeaderAndXref()
+     * @param array  $xref    xref/trailer data, as returned by parseHeaderAndXref()
+     *
+     * @return \Generator<string, array> raw object structure keyed by object reference
+     */
+    public function getObjectsStream(string $pdfData, array $xref): \Generator
+    {
         foreach ($xref['xref'] as $obj => $offset) {
-            if (!isset($objects[$obj]) && ($offset > 0)) {
-                // decode objects with positive offset
-                $objects[$obj] = $this->getIndirectObject($pdfData, $xref, $obj, $offset, true);
+            // decode objects with positive offset; xref is keyed by object
+            // reference so every $obj is unique and decoded exactly once
+            if ($offset > 0) {
+                yield $obj => $this->getIndirectObject($pdfData, $xref, $obj, $offset, true);
             }
         }
-
-        return [$xref, $objects];
     }
 }

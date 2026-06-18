@@ -49,7 +49,11 @@ It exposes two entry points:
 
 - `smalot/pdfparser` is bundled in the committed `vendor/` directory (pulled via the
   plugin's own `composer.json`). DokuWiki core auto-requires
-  `lib/plugins/totext/vendor/autoload.php` for enabled plugins.
+  `lib/plugins/totext/vendor/autoload.php` for enabled plugins. We track our own
+  fork (`cosmocode/pdfparser`, `dev-memory` branch — declared as a `vcs` repository
+  in `composer.json`, which keeps the upstream `smalot/pdfparser` package name) for
+  its lower-peak-memory streaming parser; the public API used by `PdfExtractor`
+  (`Config::setRetainImageContent()`, `Parser::parseFile()`) is unchanged.
 - `splitbrain\PHPArchive\Zip` is **not** bundled — core provides it globally.
 - Text encoding defers to core's `dokuwiki\Utf8\Clean` / `dokuwiki\Utf8\Conversion`;
   JPEG metadata uses core's `JpegMeta`; TIFF metadata uses the `exif` extension.

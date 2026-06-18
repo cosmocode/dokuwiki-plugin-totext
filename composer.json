@@ -2,10 +2,16 @@
     "name": "splitbrain/dokuwiki-plugin-totext",
     "description": "Extract plain text from various file formats (PHP only).",
     "license": "GPL-2.0-only",
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/cosmocode/pdfparser"
+        }
+    ],
     "require": {
         "php": "^8.2",
         "ext-dom": "*",
         "ext-xmlreader": "*",
-        "smalot/pdfparser": "^2.10"
+        "smalot/pdfparser": "dev-memory"
     }
 }
