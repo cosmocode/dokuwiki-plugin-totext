@@ -30,6 +30,18 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
     abstract protected function extractText(): string;
 
     /**
+     * Extract the canonical metadata map from the already-unpacked archive.
+     *
+     * Implemented per format family (see AbstractOoxmlExtractor /
+     * AbstractOdfExtractor), reading the family's metadata part(s) from
+     * $this->tempDir. Best-effort: a missing or broken metadata part yields an
+     * empty array rather than throwing, so the body text is still returned.
+     *
+     * @return array<string, string> canonical key => value map
+     */
+    abstract protected function extractMetadata(): array;
+
+    /**
      * Clean up any leftover temp dir when the instance is destroyed.
      *
      * extract() removes the temp dir promptly in its finally block; this acts
@@ -42,7 +54,7 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
     }
 
     /** @inheritDoc */
-    public function extract(string $path): string
+    public function extract(string $path): ExtractionResult
     {
         if (!is_file($path)) {
             throw new ExtractionException("File not found: $path");
@@ -50,20 +62,36 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
 
         $this->tempDir = $this->makeTempDir();
         try {
-            $zip = new Zip();
-            $zip->open($path);
-            $zip->extract($this->tempDir);
-            $zip->close();
+            // Opening the container is the total-failure gate: if the archive
+            // cannot be unpacked, nothing is recoverable and we throw.
+            try {
+                $zip = new Zip();
+                $zip->open($path);
+                $zip->extract($this->tempDir);
+                $zip->close();
+            } catch (\Throwable $e) {
+                throw ExtractionException::wrap($e, "Failed to open $path");
+            }
 
-            return $this->extractText();
-        } catch (ExtractionException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            throw new ExtractionException(
-                "Failed to extract text from $path: " . $e->getMessage(),
-                0,
-                $e,
-            );
+            // The container opened: text and metadata are independent halves,
+            // each recorded so a failure in one never discards the other.
+            $text = '';
+            $textError = null;
+            try {
+                $text = $this->extractText();
+            } catch (\Throwable $e) {
+                $textError = ExtractionException::wrap($e, "Failed to extract text from $path");
+            }
+
+            $metadata = [];
+            $metadataError = null;
+            try {
+                $metadata = $this->extractMetadata();
+            } catch (\Throwable $e) {
+                $metadataError = ExtractionException::wrap($e, "Failed to extract metadata from $path");
+            }
+
+            return new ExtractionResult($text, $metadata, $textError, $metadataError);
         } finally {
             $this->cleanup();
         }
@@ -112,6 +140,57 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
         }
         sort($results, SORT_NATURAL);
         return $results;
+    }
+
+    /**
+     * Stream-parse an XML metadata part into a canonical key => value map.
+     *
+     * Walks the document and, for every element whose local name is a key in
+     * $map, captures its text content under the mapped canonical key. Matching
+     * is by local name only (namespace-agnostic), which is enough because the
+     * metadata vocabularies (OOXML core/app, ODF meta) use distinct local
+     * names. Empty values are dropped. Local names listed (by their canonical
+     * key) in $multiValueKeys accumulate every occurrence, space-joined; all
+     * others keep the last non-empty occurrence.
+     *
+     * Best-effort: returns an empty array if the XML cannot be parsed.
+     *
+     * @param string $xml the metadata part XML
+     * @param array<string, string> $map element local name => canonical key
+     * @param string[] $multiValueKeys canonical keys whose values accumulate
+     * @return array<string, string> canonical key => value map
+     */
+    protected function mapMetadataFromXml(string $xml, array $map, array $multiValueKeys = []): array
+    {
+        $reader = new XMLReader();
+        if (!$reader->XML($xml, 'UTF-8', LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+            return [];
+        }
+        $multi = array_flip($multiValueKeys);
+        $out = [];
+        try {
+            while ($reader->read()) {
+                if ($reader->nodeType !== XMLReader::ELEMENT) {
+                    continue;
+                }
+                $key = $map[$reader->localName] ?? null;
+                if ($key === null) {
+                    continue;
+                }
+                $value = trim($reader->readString());
+                if ($value === '') {
+                    continue;
+                }
+                if (isset($multi[$key]) && isset($out[$key])) {
+                    $out[$key] .= ' ' . $value;
+                } else {
+                    $out[$key] = $value;
+                }
+            }
+        } finally {
+            $reader->close();
+        }
+        return $out;
     }
 
     /**

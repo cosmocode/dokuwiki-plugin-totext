@@ -16,7 +16,7 @@ use dokuwiki\Utf8\Conversion;
 class TextExtractor implements ExtractorInterface
 {
     /** @inheritDoc */
-    public function extract(string $path): string
+    public function extract(string $path): ExtractionResult
     {
         if (!is_file($path)) {
             throw new ExtractionException("File not found: $path");
@@ -36,6 +36,7 @@ class TextExtractor implements ExtractorInterface
         // Normalise line endings.
         $data = str_replace(["\r\n", "\r"], "\n", $data);
 
-        return trim($data);
+        // Plain text carries no structured metadata.
+        return new ExtractionResult(trim($data), []);
     }
 }

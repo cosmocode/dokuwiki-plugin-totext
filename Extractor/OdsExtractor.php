@@ -11,7 +11,7 @@ use XMLReader;
  * Each table is rendered under a "=== Sheet: <name> ===" header with
  * tab-separated cells and newline-separated rows, mirroring the XLSX output.
  */
-class OdsExtractor extends AbstractZipXmlExtractor
+class OdsExtractor extends AbstractOdfExtractor
 {
     /** namespace URI for the OpenDocument table vocabulary */
     protected const TABLE_NS = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0';

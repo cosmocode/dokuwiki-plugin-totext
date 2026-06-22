@@ -17,16 +17,24 @@ class XlsxExtractorTest extends DokuWikiTest
 
     public function testIncludesSheetHeaderAndTabSeparatedCells()
     {
-        $text = (new XlsxExtractor())->extract(Samples::path('tika-sample.xlsx'));
+        $text = (new XlsxExtractor())->extract(Samples::path('tika-sample.xlsx'))->text;
         $this->assertStringContainsString('=== Sheet: ', $text);
         $this->assertStringContainsString("Number\tSquare", $text);
+    }
+
+    public function testExtractsCoreAndAppMetadata()
+    {
+        $meta = (new XlsxExtractor())->extract(Samples::path('tika-sample.xlsx'))->metadata;
+        $this->assertSame('Simple Excel document', $meta['Title']);
+        $this->assertSame('Keith Bennett', $meta['Author']);
+        $this->assertSame('Microsoft Excel', $meta['Producer']);
     }
 
     public function testResolvesSheetNamesInOrder()
     {
         // sample.xlsx has three named sheets; the extractor resolves each name to
         // its worksheet file via the relationships and emits them in tab order
-        $text = (new XlsxExtractor())->extract(Samples::path('tika-sample.xlsx'));
+        $text = (new XlsxExtractor())->extract(Samples::path('tika-sample.xlsx'))->text;
         $this->assertStringContainsString('=== Sheet: Feuil1 ===', $text);
         $this->assertStringContainsString('=== Sheet: Feuil2 ===', $text);
         $this->assertStringContainsString('=== Sheet: Feuil3 ===', $text);
@@ -45,7 +53,7 @@ class XlsxExtractorTest extends DokuWikiTest
         // a real XLSX whose xl/workbook.xml is gone: names can no longer be
         // resolved, so the extractor falls back to positional "SheetN" naming
         $broken = Samples::withoutPart('tika-sample.xlsx', 'xl/workbook.xml');
-        $text = (new XlsxExtractor())->extract($broken);
+        $text = (new XlsxExtractor())->extract($broken)->text;
         $this->assertStringContainsString('=== Sheet: Sheet1 ===', $text);
         $this->assertStringContainsString('Number', $text);
     }

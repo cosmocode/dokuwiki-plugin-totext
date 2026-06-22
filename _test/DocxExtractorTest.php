@@ -18,7 +18,7 @@ class DocxExtractorTest extends DokuWikiTest
 
     public function testExtractsHeadingsBodyAndTables()
     {
-        $text = (new DocxExtractor())->extract(Samples::path('tika-sample.docx'));
+        $text = (new DocxExtractor())->extract(Samples::path('tika-sample.docx'))->text;
         $this->assertStringContainsString('Sample Word Document Title', $text);
         $this->assertStringContainsString('Heading Level 1', $text);
         $this->assertStringContainsString('This is a sample Microsoft Word Document.', $text);
@@ -31,14 +31,14 @@ class DocxExtractorTest extends DokuWikiTest
     {
         // header/footer live in word/header*.xml / word/footer*.xml, which the
         // extractor scans in addition to word/document.xml
-        $text = (new DocxExtractor())->extract(Samples::path('tika-sample.docx'));
+        $text = (new DocxExtractor())->extract(Samples::path('tika-sample.docx'))->text;
         $this->assertStringContainsString('This is the header for our document', $text);
         $this->assertStringContainsString('This is the footer for our document', $text);
     }
 
     public function testExtractsListsAndFootnotes()
     {
-        $text = (new DocxExtractor())->extract(Samples::path('tika-various.docx'));
+        $text = (new DocxExtractor())->extract(Samples::path('tika-various.docx'))->text;
         $this->assertStringContainsString('Bullet 1', $text);
         $this->assertStringContainsString('Number bullet 1', $text);
         $this->assertStringContainsString('Footnote appears here', $text);
@@ -47,16 +47,44 @@ class DocxExtractorTest extends DokuWikiTest
     public function testPreservesMultibyteUtf8()
     {
         // tika-various.docx mixes Japanese and four-byte Gothic; both must survive
-        $text = (new DocxExtractor())->extract(Samples::path('tika-various.docx'));
+        $text = (new DocxExtractor())->extract(Samples::path('tika-various.docx'))->text;
         $this->assertStringContainsString('ゾルゲと尾崎', $text, 'Japanese text lost');
         $this->assertStringContainsString('𐌲𐌿𐍄𐌹𐍃𐌺', $text, 'four-byte Gothic text lost');
     }
 
-    public function testMissingDocumentPartThrows()
+    public function testExtractsCoreAndAppMetadata()
     {
-        // a real DOCX with its main part removed
+        // docProps/core.xml (Dublin Core) + docProps/app.xml (Application)
+        $meta = (new DocxExtractor())->extract(Samples::path('tika-sample.docx'))->metadata;
+        $this->assertSame('Sample Word Document', $meta['Title']);
+        $this->assertSame('Keith Bennett', $meta['Author']);
+        $this->assertArrayHasKey('Created', $meta);
+        $this->assertArrayHasKey('Modified', $meta);
+        $this->assertSame('Microsoft Office Word', $meta['Producer']);
+    }
+
+    public function testDropsEmptyMetadataValues()
+    {
+        // tika-various.docx has empty <dc:title> and <dc:description> elements;
+        // empty values must not surface as blank keys.
+        $meta = (new DocxExtractor())->extract(Samples::path('tika-various.docx'))->metadata;
+        $this->assertSame('Michael McCandless', $meta['Author']);
+        $this->assertSame('Subject is here', $meta['Subject']);
+        $this->assertSame('Keyword1 Keyword2', $meta['Keywords']);
+        $this->assertArrayNotHasKey('Title', $meta);
+        $this->assertArrayNotHasKey('Description', $meta);
+    }
+
+    public function testMissingDocumentPartRecordsTextErrorButKeepsMetadata()
+    {
+        // a real DOCX with its main body part removed: the container still opens,
+        // so text extraction fails (recorded as textError) while the independent
+        // docProps metadata is still salvaged.
         $broken = Samples::withoutPart('tika-sample.docx', 'word/document.xml');
-        $this->expectException(ExtractionException::class);
-        (new DocxExtractor())->extract($broken);
+        $result = (new DocxExtractor())->extract($broken);
+        $this->assertInstanceOf(ExtractionException::class, $result->textError);
+        $this->assertSame('', $result->text);
+        $this->assertNull($result->metadataError);
+        $this->assertSame('Sample Word Document', $result->metadata['Title']);
     }
 }

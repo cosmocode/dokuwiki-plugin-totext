@@ -10,8 +10,9 @@ use JpegMeta;
  *
  * This reads embedded metadata only — it is NOT optical character recognition.
  * JPEG files are read through DokuWiki's core JpegMeta reader; TIFF files (and
- * JPEG as a fallback) are read through the exif extension. If a file carries no
- * textual metadata, an empty string is returned (it was readable, just empty).
+ * JPEG as a fallback) are read through the exif extension. Images carry no body
+ * text, so the result's text is always '' and everything goes into the metadata
+ * map; a file with no textual metadata yields an empty map.
  */
 class ImageExtractor implements ExtractorInterface
 {
@@ -25,12 +26,12 @@ class ImageExtractor implements ExtractorInterface
      */
     protected const JPEG_FIELDS = [
         'Title' => ['Iptc.Headline'],
-        'Caption' => ['Iptc.Caption', 'Exif.UserComment', 'Exif.TIFFImageDescription', 'Exif.TIFFUserComment'],
+        'Description' => ['Iptc.Caption', 'Exif.UserComment', 'Exif.TIFFImageDescription', 'Exif.TIFFUserComment'],
         'Author' => ['Iptc.Byline', 'Exif.TIFFArtist', 'Exif.Artist', 'Iptc.Credit'],
         'Copyright' => ['Iptc.CopyrightNotice', 'Exif.TIFFCopyright', 'Exif.Copyright'],
         'Keywords' => ['Iptc.Keywords', 'Exif.Category'],
-        'Date' => ['Exif.DateTimeOriginal', 'Exif.DateTimeDigitized', 'Exif.DateTime'],
-        'Camera' => ['Simple.Camera'],
+        'Created' => ['Exif.DateTimeOriginal', 'Exif.DateTimeDigitized', 'Exif.DateTime'],
+        'Producer' => ['Simple.Camera'],
     ];
 
     /**
@@ -46,16 +47,16 @@ class ImageExtractor implements ExtractorInterface
      */
     protected const EXIF_FIELDS = [
         'Title' => ['Title', 'XPTitle'],
-        'Caption' => ['ImageDescription', 'UserComment', 'Comment', 'Subject', 'XPComment', 'XPSubject'],
+        'Description' => ['ImageDescription', 'UserComment', 'Comment', 'Subject', 'XPComment', 'XPSubject'],
         'Author' => ['Artist', 'Author', 'XPAuthor'],
         'Copyright' => ['Copyright'],
         'Keywords' => ['Keywords', 'XPKeywords'],
-        'Date' => ['DateTimeOriginal', 'DateTime'],
-        'Camera' => ['Model'],
+        'Created' => ['DateTimeOriginal', 'DateTime'],
+        'Producer' => ['Model'],
     ];
 
     /** @inheritDoc */
-    public function extract(string $path): string
+    public function extract(string $path): ExtractionResult
     {
         if (!is_file($path)) {
             throw new ExtractionException("File not found: $path");
@@ -68,13 +69,13 @@ class ImageExtractor implements ExtractorInterface
             $fields = $this->extractExif($path);
         }
 
-        $lines = [];
+        $metadata = [];
         foreach ($fields as $label => $value) {
             if ($value !== '') {
-                $lines[] = "$label: $value";
+                $metadata[$label] = $value;
             }
         }
-        return implode("\n", $lines);
+        return new ExtractionResult('', $metadata);
     }
 
     /**

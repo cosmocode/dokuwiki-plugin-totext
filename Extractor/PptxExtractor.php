@@ -11,7 +11,7 @@ use XMLReader;
  * Slides are emitted in presentation order under "=== Slide N ===" headers,
  * each optionally followed by a "--- Notes ---" section.
  */
-class PptxExtractor extends AbstractZipXmlExtractor
+class PptxExtractor extends AbstractOoxmlExtractor
 {
     /** namespace URI for relationship references */
     protected const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';

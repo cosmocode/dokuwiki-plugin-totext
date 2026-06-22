@@ -38,18 +38,21 @@ class ImageExtractorTest extends DokuWikiTest
     {
         // meta.jpg carries Photoshop IPTC (caption, by-line, keywords) plus EXIF
         // (camera). The IPTC was written non-UTF-8, so only the ASCII-safe part
-        // of the caption is asserted here.
-        $text = (new ImageExtractor())->extract(Samples::path('tika-meta.jpg'));
-        $this->assertStringContainsString('Caption: Bird site in north eastern', $text);
-        $this->assertStringContainsString('Author: Some Tourist', $text);
-        $this->assertStringContainsString('Keywords: grazelands', $text);
-        $this->assertStringContainsString('Camera: Nokia N78', $text);
+        // of the description is asserted here. Images carry no body text.
+        $result = (new ImageExtractor())->extract(Samples::path('tika-meta.jpg'));
+        $this->assertSame('', $result->text);
+        $meta = $result->metadata;
+        $this->assertStringContainsString('Bird site in north eastern', $meta['Description']);
+        $this->assertSame('Some Tourist', $meta['Author']);
+        $this->assertStringContainsString('grazelands', $meta['Keywords']);
+        $this->assertSame('Nokia N78', $meta['Producer']);
     }
 
-    public function testImageWithoutMetadataReturnsEmptyString()
+    public function testImageWithoutMetadataYieldsEmptyResult()
     {
-        $text = (new ImageExtractor())->extract(Samples::path('tika-plain.jpg'));
-        $this->assertSame('', $text);
+        $result = (new ImageExtractor())->extract(Samples::path('tika-plain.jpg'));
+        $this->assertSame('', $result->text);
+        $this->assertSame([], $result->metadata);
     }
 
     public function testExtractsTiffExifMetadata()
@@ -58,8 +61,8 @@ class ImageExtractorTest extends DokuWikiTest
             $this->markTestSkipped('exif extension required to read TIFF metadata');
         }
         // meta.tiff stores its descriptive text in the EXIF ImageDescription tag
-        $text = (new ImageExtractor())->extract(Samples::path('tika-meta.tiff'));
-        $this->assertStringContainsString('Caption: Licensed to the Apache Software Foundation', $text);
+        $meta = (new ImageExtractor())->extract(Samples::path('tika-meta.tiff'))->metadata;
+        $this->assertStringContainsString('Licensed to the Apache Software Foundation', $meta['Description']);
     }
 
     public function testMissingFileThrows()

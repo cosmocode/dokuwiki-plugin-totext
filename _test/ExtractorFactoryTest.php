@@ -141,7 +141,7 @@ class ExtractorFactoryTest extends DokuWikiTest
      */
     public function testExtractConvenienceRoundtripsFormat(string $file, string $needle)
     {
-        $this->assertStringContainsString($needle, ExtractorFactory::extract(Samples::path($file)));
+        $this->assertStringContainsString($needle, ExtractorFactory::extract(Samples::path($file))->text);
     }
 
     public function testCorruptDocxRaisesExtractionException()

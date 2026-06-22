@@ -39,17 +39,19 @@ class TextExtractorTest extends DokuWikiTest
     public function testReadsRealSampleFile()
     {
         // tika-sample.txt is a multilingual UTF-8 pangram; the multibyte text must survive
-        $text = (new TextExtractor())->extract(Samples::path('tika-sample.txt'));
-        $this->assertStringContainsString('The quick brown fox jumps over the lazy dog', $text);
-        $this->assertStringContainsString('über', $text);
-        $this->assertStringContainsString('براون', $text);
+        $result = (new TextExtractor())->extract(Samples::path('tika-sample.txt'));
+        $this->assertStringContainsString('The quick brown fox jumps over the lazy dog', $result->text);
+        $this->assertStringContainsString('über', $result->text);
+        $this->assertStringContainsString('براون', $result->text);
+        // plain text carries no structured metadata
+        $this->assertSame([], $result->metadata);
     }
 
     public function testReadsPlainText()
     {
         $path = $this->tmp . '/sample.txt';
         file_put_contents($path, "Hello text\nsecond line");
-        $text = (new TextExtractor())->extract($path);
+        $text = (new TextExtractor())->extract($path)->text;
         $this->assertSame("Hello text\nsecond line", $text);
     }
 
@@ -57,7 +59,7 @@ class TextExtractorTest extends DokuWikiTest
     {
         $path = $this->tmp . '/crlf.txt';
         file_put_contents($path, "one\r\ntwo\rthree");
-        $text = (new TextExtractor())->extract($path);
+        $text = (new TextExtractor())->extract($path)->text;
         $this->assertSame("one\ntwo\nthree", $text);
     }
 
@@ -66,7 +68,7 @@ class TextExtractorTest extends DokuWikiTest
         $path = $this->tmp . '/latin1.txt';
         // 0xE9 is "é" in Latin-1, invalid as standalone UTF-8
         file_put_contents($path, "caf\xE9");
-        $text = (new TextExtractor())->extract($path);
+        $text = (new TextExtractor())->extract($path)->text;
         $this->assertSame('café', $text);
     }
 
@@ -75,7 +77,7 @@ class TextExtractorTest extends DokuWikiTest
         $path = $this->tmp . '/bad.txt';
         // a lone 0xFF byte must not survive as a raw byte in the output
         file_put_contents($path, "ok\xFFok");
-        $text = (new TextExtractor())->extract($path);
+        $text = (new TextExtractor())->extract($path)->text;
         $this->assertStringContainsString('ok', $text);
         $this->assertStringNotContainsString("\xFF", $text);
     }
@@ -84,7 +86,7 @@ class TextExtractorTest extends DokuWikiTest
     {
         $path = $this->tmp . '/empty.txt';
         file_put_contents($path, '');
-        $this->assertSame('', (new TextExtractor())->extract($path));
+        $this->assertSame('', (new TextExtractor())->extract($path)->text);
     }
 
     public function testMissingFileThrows()

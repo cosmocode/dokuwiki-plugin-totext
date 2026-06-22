@@ -12,53 +12,153 @@ formats using **PHP only** — no shell-outs and no external binaries.
 It exposes two entry points:
 
 1. **CLI component** (`cli.php`, class `cli_plugin_totext`) —
-   `php bin/plugin.php totext <file>` prints the extracted text to STDOUT.
+   `php bin/plugin.php totext <file>` prints the body text followed by the
+   metadata (`Key: value` lines, separated by a blank line) to STDOUT. `--text`
+   (`-t`) prints only the body text; `--meta` (`-m`) prints only the metadata;
+   the two are mutually exclusive "only this" switches. If a requested half fails
+   but the other is salvaged, it warns on STDERR and still prints the salvaged
+   half (exit 0); if *nothing* usable came through for what was requested it
+   re-throws, so the CLI exception handler reports it and exits non-zero.
 2. **Helper component** (`helper.php`, class `helper_plugin_totext`) — gives other
-   plugins the same functionality via `plugin_load('helper', 'totext')`.
+   plugins the same functionality via `plugin_load('helper', 'totext')`:
+   `extract($path): ExtractionResult` (both outputs; never throws for a *partial*
+   failure — inspect `->textError`/`->metadataError`), `extractMetadata($path):
+   array` (throws if metadata failed), and `extractText($path): string` (throws
+   if text failed — preserves the throw-on-failure contract the docsearch plugin
+   relies on to fall back to its own converters).
 
 ### Architecture
 
 - `Extractor/ExtractorInterface.php` — the contract every extractor implements.
-  It is deliberately just `extract()`: extractors are dumb workers and do not
-  know their own extensions. All extension knowledge lives in the factory.
+  It is deliberately just `extract(): ExtractionResult`: extractors are dumb
+  workers and do not know their own extensions. All extension knowledge lives in
+  the factory.
+- `Extractor/ExtractionResult.php` — the `final` readonly value object every
+  extractor returns: `string $text` (body text), `array<string,string>
+  $metadata` (canonical key → value map), and `?\Throwable $textError` /
+  `?\Throwable $metadataError` recording a per-half failure (plus `isComplete()`).
+  Produced from **one** parse of the file. See *Metadata* below for the
+  vocabulary and *Failure model* below for the error semantics.
 - `Extractor/ExtractorFactory.php` — the sole routing authority (`forFile()`,
-  `extract()`, `supportedExtensions()`). Its `EXTRACTORS` constant (extension →
-  extractor class) is the single source of truth: `forFile()` looks the file's
-  extension up in it and `supportedExtensions()` returns its keys. Add a new
-  format with one new extractor class plus one entry in that map — extensions
-  are never written down anywhere else.
+  `extract()` → `ExtractionResult`, `supportedExtensions()`). Its `EXTRACTORS`
+  constant (extension → extractor class) is the single source of truth:
+  `forFile()` looks the file's extension up in it and `supportedExtensions()`
+  returns its keys. Add a new format with one new extractor class plus one entry
+  in that map — extensions are never written down anywhere else.
 - `Extractor/AbstractZipXmlExtractor.php` — shared base for all ZIP-of-XML formats
-  (OOXML *and* OpenDocument). Provides `readPart()`, `listParts()`, temp-dir
-  handling, and two streaming `XMLReader` text walkers: `extractTextFromXml()`
-  (text in a wrapper element, used by OOXML) and `extractAllTextFromXml()` (text
-  as character data, used by OpenDocument). The unpack temp dir is created in
+  (OOXML *and* OpenDocument). `extract()` does one unzip — **opening the archive
+  is the total-failure gate**: if it can't be unpacked, nothing is recoverable
+  and it throws. Once open, the abstract `extractText()` and `extractMetadata()`
+  run as independent halves; whichever throws has its error recorded on the
+  result (normalised to an `ExtractionException` via `ExtractionException::wrap()`,
+  the shared wrap-a-caught-error helper) while the other half is still returned
+  (see *Failure model*). Provides
+  `readPart()`, `listParts()`, temp-dir handling, two streaming `XMLReader` text
+  walkers — `extractTextFromXml()` (text in a wrapper element, used by OOXML) and
+  `extractAllTextFromXml()` (text as character data, used by OpenDocument) — and
+  the generic `mapMetadataFromXml($xml, $map, $multiValueKeys)` primitive (walks
+  a metadata part, matching element **local names** to canonical keys, dropping
+  empty values, accumulating multi-value keys). The unpack temp dir is created in
   DokuWiki's own temp dir (`$conf['tmpdir']`) via core's `io_mktmpdir()` and
   removed with core's `io_rmdir($dir, true)` — never the system temp dir.
   `extract()` removes it promptly in a `finally` block; the class `__destruct()`
   repeats the cleanup as a safety net so the dir is gone even if the process
   dies (e.g. a fatal error) before `finally` runs.
-- Concrete extractors: `DocxExtractor`, `XlsxExtractor`, `PptxExtractor`,
-  `OdtExtractor`, `OdsExtractor`, `OdpExtractor`, `PdfExtractor`, `TextExtractor`
-  (txt/csv/md/log/...), `ImageExtractor` (EXIF/IPTC metadata of jpg/tiff — metadata
-  only, not OCR).
+- `Extractor/AbstractOoxmlExtractor.php` / `Extractor/AbstractOdfExtractor.php` —
+  intermediary classes between the ZIP base and the concrete extractors. They
+  exist solely to declare each family's metadata source **once**: OOXML reads
+  `docProps/core.xml` (`CORE_META_MAP`) + `docProps/app.xml` (`APP_META_MAP`);
+  ODF reads `meta.xml` (`META_MAP`, with `meta:keyword` accumulating into
+  `Keywords`). There is no family autodetection — each concrete ZIP extractor
+  simply `extends` the matching intermediary and carries no metadata code.
+- Concrete extractors: `DocxExtractor`/`XlsxExtractor`/`PptxExtractor` (extend
+  `AbstractOoxmlExtractor`), `OdtExtractor`/`OdsExtractor`/`OdpExtractor` (extend
+  `AbstractOdfExtractor`), `PdfExtractor`, `TextExtractor` (txt/csv/md/log/...),
+  `ImageExtractor` (EXIF/IPTC metadata of jpg/tiff — metadata only, not OCR).
 - `Exception/ExtractionException.php` and `Exception/UnsupportedFormatException.php`
   (the latter extends the former). The helper and factory **throw**; the CLI does
   not catch, relying on `splitbrain\phpcli\CLI` to print the message and exit non-zero.
+
+### Metadata
+
+`extract()` returns a metadata map keyed by a **single canonical vocabulary**,
+identical across all formats so consumers never special-case the source:
+
+`Title, Author, Subject, Keywords, Description, Created, Modified, Language,
+Producer` (all formats) plus `Copyright` (**image-only**). Values are non-empty
+UTF-8 strings; empty values are dropped (never stored as blank keys).
+
+- **`Producer`** is "what produced this file" — the authoring application for
+  office/PDF (PDF: `Producer`, else `Creator`) **and** the camera/software for an
+  image (`Simple.Camera` / EXIF `Model`). There is intentionally no separate
+  `Camera` key.
+- **`Copyright` is image-only by spec, not by accident.** OOXML
+  `CT_CoreProperties` (ECMA-376 / ISO 29500) has no `dc:rights`; ODF
+  `<office:meta>` has no `dc:rights` either; the PDF Info dictionary has no
+  copyright key (it lives only in an XMP stream prinsfrank does not surface).
+  Only IPTC/EXIF have dedicated copyright fields, which `ImageExtractor` reads.
+- Each family's source map is declared **once** in its intermediary class
+  (`AbstractOoxmlExtractor`, `AbstractOdfExtractor`); `PdfExtractor` and
+  `ImageExtractor` map their own native fields. The generic
+  `mapMetadataFromXml()` matches by element **local name** (namespace-agnostic) —
+  safe because OOXML core/app and ODF meta use distinct local names.
+- **Image behavior change:** `extractText()` on an image now returns `''` (its
+  descriptive fields moved into `metadata`), not the old `"Caption: …\nAuthor:
+  …"` text block. `ImageExtractor`'s field-map keys were renamed to the canonical
+  vocabulary (`Caption`→`Description`, `Date`→`Created`, `Camera`→`Producer`).
+
+### Failure model
+
+Text and metadata are extracted **independently**, so one half can fail while
+the other is salvaged. Each extractor has a single **total-failure gate** — the
+step that, if it fails, leaves *nothing* recoverable (the container won't unzip,
+the PDF won't parse, the file can't be read). The gate throws an
+`ExtractionException`. Everything after the gate is a per-half best-effort:
+
+- A half that throws has its error recorded in `ExtractionResult::$textError` /
+  `$metadataError`; its output is left empty (`''` / `[]`) and the *other* half
+  is still returned. `extract()` itself does **not** throw for a partial failure.
+- An output that is empty **by design** is not a failure and leaves its error
+  `null`: images have no body text (`text === ''`, `textError === null`), plain
+  text has no metadata (`metadata === []`, `metadataError === null`). Likewise a
+  document that simply carries no metadata yields `[]` with no error — only an
+  actual read/parse exception sets `metadataError`.
+- Single-output formats fold into this cleanly: their one product *is* the gate.
+  `TextExtractor` (text-only) and `ImageExtractor` (metadata-only) throw on
+  failure and never set the error fields.
+- The helper's `extractText()` / `extractMetadata()` **re-throw** the relevant
+  half's recorded error, so a single-output caller keeps its throw-on-failure
+  contract even when the other half was salvaged. The CLI warns on STDERR about
+  a failed half but still prints the salvaged half (exit 0); only when *nothing*
+  usable came through for what was requested does it re-throw (non-zero exit).
 
 ### Dependencies
 
 - `prinsfrank/pdfparser` (v3.x, MIT, zero PHP dependencies — pulls only
   `prinsfrank/glyph-lists`) is bundled in the committed `vendor/` directory (pulled
   via the plugin's own `composer.json`). DokuWiki core auto-requires
-  `lib/plugins/totext/vendor/autoload.php` for enabled plugins. `PdfExtractor` uses
-  `(new PrinsFrank\PdfParser\PdfParser())->parseFile($path)->getText()` — the default
-  in-memory mode, which benchmarked both faster and far lighter than the previous
+  `lib/plugins/totext/vendor/autoload.php` for enabled plugins. `PdfExtractor`
+  parses once via `(new PrinsFrank\PdfParser\PdfParser())->parseFile($path)`, takes
+  the body from `->getText()` and reads the Info dictionary
+  (`getInformationDictionary()`) best-effort for metadata — the default in-memory
+  mode, which benchmarked both faster and far lighter than the previous
   smalot/cosmocode fork (no `setRetainImageContent` tuning needed). It requires
   `ext-gd`/`ext-iconv`/`ext-zlib`, enforced transitively by the package.
+- **UTF-16BE Info-string shim** (`PdfExtractor::normalizePdfString()`): prinsfrank
+  ≤ v3.1.0 does not decode UTF-16BE text strings stored as PDF *literal* strings.
+  Their bytes arrive expanded one-codepoint-per-byte (`mb_chr` on the octal
+  escapes), so a UTF-16BE BOM surfaces as the mojibake `þÿ`
+  (`0xC3 0xBE 0xC3 0xBF`); the shim collapses that back to ISO-8859-1 to recover
+  the raw `0xFE 0xFF` BOM, then `iconv`s UTF-16BE→UTF-8. (`tika-sample.pdf`'s
+  Author `Bertrand Delacrétaz` exercises this.) A genuinely raw BOM is handled
+  too. **Remove once decoding is fixed upstream.**
 - **Known limitation:** prinsfrank/pdfparser ≤ v3.1.0 does **not** extract text that
   lives inside a Form XObject (page content painted with the `Do` operator — common
   in Quartz/macOS, Firefox and Chrome PDFs, including `_test/data/tika-sample.pdf`,
-  so `PdfExtractorTest::testExtractsText` fails against stock v3.1.0).
+  so `PdfExtractorTest::testExtractsText` and the factory roundtrip's `pdf` case
+  fail against stock v3.1.0). This is the **body text** only — the PDF **metadata**
+  test passes regardless, because the Info dictionary is read independently of
+  `getText()`.
 - `splitbrain\PHPArchive\Zip` is **not** bundled — core provides it globally.
 - Text encoding defers to core's `dokuwiki\Utf8\Clean` / `dokuwiki\Utf8\Conversion`;
   JPEG metadata uses core's `JpegMeta`; TIFF metadata uses the `exif` extension.
@@ -122,7 +222,12 @@ release tarballs — only the git repo holds them.
   exposes `withoutPart()` (unpack a real container minus one ZIP member and repack
   it via php-archive, e.g. a DOCX missing `word/document.xml`) and `corrupt()`
   (non-archive bytes); both manage their own temp files, and `path()` resolves a
-  committed sample. There is no fixture *builder*.
+  committed sample. There is no fixture *builder*. Note the failure model (above):
+  `corrupt()` trips the total-failure gate so `extract()` **throws**, whereas
+  `withoutPart()` removing only the body part (`word/document.xml`, `content.xml`)
+  leaves the container openable, so `extract()` returns a **partial result** —
+  `textError` set, the independent metadata (`docProps/*`, `meta.xml`) salvaged.
+  `HelperTest` separately locks the `extractText()` re-throw contract.
 * **Edges no clean real file covers are not tested** — deliberately dropped when
   the corpus had no document that targets them without inventing structure: XLSX
   custom sheet-name↔file *re*ordering (only normal multi-sheet order is tested),

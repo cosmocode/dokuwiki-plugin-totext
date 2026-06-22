@@ -11,7 +11,7 @@ use XMLReader;
  * Each sheet is rendered under a "=== Sheet: <name> ===" header with
  * tab-separated cells and newline-separated rows.
  */
-class XlsxExtractor extends AbstractZipXmlExtractor
+class XlsxExtractor extends AbstractOoxmlExtractor
 {
     /** namespace URI for relationship references (the r: prefix) */
     protected const RELS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';

@@ -64,10 +64,10 @@ class ExtractorFactory
      * Convenience: pick the right extractor and run it.
      *
      * @param string $path absolute path to the file
-     * @return string the extracted plain text
+     * @return ExtractionResult the extracted body text and canonical metadata
      * @throws \dokuwiki\plugin\totext\Exception\ExtractionException on failure or unsupported format
      */
-    public static function extract(string $path): string
+    public static function extract(string $path): ExtractionResult
     {
         return self::forFile($path)->extract($path);
     }

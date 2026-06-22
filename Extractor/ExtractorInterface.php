@@ -8,11 +8,11 @@ namespace dokuwiki\plugin\totext\Extractor;
 interface ExtractorInterface
 {
     /**
-     * Extract plain text from the given file.
+     * Extract body text and metadata from the given file.
      *
      * @param string $path absolute path to the file
-     * @return string the extracted plain text
+     * @return ExtractionResult the extracted body text and canonical metadata
      * @throws \dokuwiki\plugin\totext\Exception\ExtractionException on I/O or parse failure
      */
-    public function extract(string $path): string;
+    public function extract(string $path): ExtractionResult;
 }

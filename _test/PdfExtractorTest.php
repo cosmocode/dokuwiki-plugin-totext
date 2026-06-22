@@ -35,9 +35,23 @@ class PdfExtractorTest extends DokuWikiTest
 
     public function testExtractsText()
     {
-        $text = (new PdfExtractor())->extract(Samples::path('tika-sample.pdf'));
+        $text = (new PdfExtractor())->extract(Samples::path('tika-sample.pdf'))->text;
         $this->assertStringContainsString('Tika - Content Analysis Toolkit', $text);
         $this->assertStringContainsString('Apache Tika is a toolkit', $text);
+    }
+
+    public function testExtractsInfoDictionaryMetadata()
+    {
+        // The Info dictionary is read independently of getText(), so this passes
+        // regardless of the Form-XObject body-text limitation in prinsfrank.
+        $meta = (new PdfExtractor())->extract(Samples::path('tika-sample.pdf'))->metadata;
+        $this->assertSame('Apache Tika - Apache Tika', $meta['Title']);
+        // Author is stored as a UTF-16BE literal string; this asserts the
+        // iconv UTF-16BE shim decoded the accented name correctly.
+        $this->assertSame('Bertrand Delacrétaz', $meta['Author']);
+        $this->assertArrayHasKey('Created', $meta);
+        $this->assertStringContainsString('2007-09-15', $meta['Created']);
+        $this->assertStringContainsString('Quartz', $meta['Producer']);
     }
 
     public function testCorruptFileThrows()
