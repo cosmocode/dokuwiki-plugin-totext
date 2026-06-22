@@ -6,31 +6,22 @@ namespace Composer\Autoload;
 
 class ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed
 {
-    public static $files = array (
-        '0e6d7bf4a5811bfa5cf40c5ccd6fae6a' => __DIR__ . '/..' . '/symfony/polyfill-mbstring/bootstrap.php',
-    );
-
     public static $prefixLengthsPsr4 = array (
-        'S' =>
+        'P' =>
         array (
-            'Symfony\\Polyfill\\Mbstring\\' => 26,
+            'PrinsFrank\\PdfParser\\' => 21,
+            'PrinsFrank\\GlyphLists\\' => 22,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'Symfony\\Polyfill\\Mbstring\\' =>
+        'PrinsFrank\\PdfParser\\' =>
         array (
-            0 => __DIR__ . '/..' . '/symfony/polyfill-mbstring',
+            0 => __DIR__ . '/..' . '/prinsfrank/pdfparser/src',
         ),
-    );
-
-    public static $prefixesPsr0 = array (
-        'S' =>
+        'PrinsFrank\\GlyphLists\\' =>
         array (
-            'Smalot\\PdfParser\\' =>
-            array (
-                0 => __DIR__ . '/..' . '/smalot/pdfparser/src',
-            ),
+            0 => __DIR__ . '/..' . '/prinsfrank/glyph-lists/src',
         ),
     );
 
@@ -43,7 +34,6 @@ class ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed
         return \Closure::bind(function () use ($loader) {
             $loader->prefixLengthsPsr4 = ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed::$prefixLengthsPsr4;
             $loader->prefixDirsPsr4 = ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed::$prefixDirsPsr4;
-            $loader->prefixesPsr0 = ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed::$prefixesPsr0;
             $loader->classMap = ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed::$classMap;
 
         }, null, ClassLoader::class);

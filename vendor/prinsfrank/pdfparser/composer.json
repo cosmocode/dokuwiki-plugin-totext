@@ -1,0 +1,42 @@
+{
+    "name": "prinsfrank/pdfparser",
+    "description": "PHP library to Read and extract text & images from PDFs - Fast & Low memory - Built from scratch",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "PrinsFrank\\PdfParser\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "PrinsFrank\\PdfParser\\Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": "^8.2",
+        "ext-gd": "*",
+        "ext-iconv": "*",
+        "ext-zlib": "*",
+        "prinsfrank/glyph-lists": "^1.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.65",
+        "phpstan/phpstan": "2.2.1",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2",
+        "phpunit/phpunit": "^11.5",
+        "symfony/yaml": "^7.3"
+    },
+    "scripts": {
+        "cs": "php-cs-fixer fix --allow-risky=yes --dry-run",
+        "cs:fix": "php-cs-fixer fix --allow-risky=yes",
+        "stan": "phpstan analyse --memory-limit 4G -v",
+        "unit": "phpunit --testsuite=Unit",
+        "feature": "phpunit --testsuite=Feature",
+        "update-content": "./tests/Samples/update-content"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

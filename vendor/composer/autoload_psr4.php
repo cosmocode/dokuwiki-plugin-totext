@@ -6,5 +6,6 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
-    'Symfony\\Polyfill\\Mbstring\\' => array($vendorDir . '/symfony/polyfill-mbstring'),
+    'PrinsFrank\\PdfParser\\' => array($vendorDir . '/prinsfrank/pdfparser/src'),
+    'PrinsFrank\\GlyphLists\\' => array($vendorDir . '/prinsfrank/glyph-lists/src'),
 );

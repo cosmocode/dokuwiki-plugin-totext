@@ -47,13 +47,18 @@ It exposes two entry points:
 
 ### Dependencies
 
-- `smalot/pdfparser` is bundled in the committed `vendor/` directory (pulled via the
-  plugin's own `composer.json`). DokuWiki core auto-requires
-  `lib/plugins/totext/vendor/autoload.php` for enabled plugins. We track our own
-  fork (`cosmocode/pdfparser`, `dev-memory` branch — declared as a `vcs` repository
-  in `composer.json`, which keeps the upstream `smalot/pdfparser` package name) for
-  its lower-peak-memory streaming parser; the public API used by `PdfExtractor`
-  (`Config::setRetainImageContent()`, `Parser::parseFile()`) is unchanged.
+- `prinsfrank/pdfparser` (v3.x, MIT, zero PHP dependencies — pulls only
+  `prinsfrank/glyph-lists`) is bundled in the committed `vendor/` directory (pulled
+  via the plugin's own `composer.json`). DokuWiki core auto-requires
+  `lib/plugins/totext/vendor/autoload.php` for enabled plugins. `PdfExtractor` uses
+  `(new PrinsFrank\PdfParser\PdfParser())->parseFile($path)->getText()` — the default
+  in-memory mode, which benchmarked both faster and far lighter than the previous
+  smalot/cosmocode fork (no `setRetainImageContent` tuning needed). It requires
+  `ext-gd`/`ext-iconv`/`ext-zlib`, enforced transitively by the package.
+- **Known limitation:** prinsfrank/pdfparser ≤ v3.1.0 does **not** extract text that
+  lives inside a Form XObject (page content painted with the `Do` operator — common
+  in Quartz/macOS, Firefox and Chrome PDFs, including `_test/data/tika-sample.pdf`,
+  so `PdfExtractorTest::testExtractsText` fails against stock v3.1.0).
 - `splitbrain\PHPArchive\Zip` is **not** bundled — core provides it globally.
 - Text encoding defers to core's `dokuwiki\Utf8\Clean` / `dokuwiki\Utf8\Conversion`;
   JPEG metadata uses core's `JpegMeta`; TIFF metadata uses the `exif` extension.

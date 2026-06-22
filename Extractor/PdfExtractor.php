@@ -3,11 +3,10 @@
 namespace dokuwiki\plugin\totext\Extractor;
 
 use dokuwiki\plugin\totext\Exception\ExtractionException;
-use Smalot\PdfParser\Config;
-use Smalot\PdfParser\Parser;
+use PrinsFrank\PdfParser\PdfParser;
 
 /**
- * Extracts text from PDF documents using the bundled smalot/pdfparser.
+ * Extracts text from PDF documents using the bundled prinsfrank/pdfparser.
  */
 class PdfExtractor implements ExtractorInterface
 {
@@ -18,14 +17,11 @@ class PdfExtractor implements ExtractorInterface
             throw new ExtractionException("File not found: $path");
         }
         try {
-            $config = new Config();
-            // We only want the text. Not retaining image content makes the
-            // parser skip decoding image streams outright — those are the
-            // largest streams in a PDF, so this markedly lowers peak memory
-            // (and never affects the extracted text).
-            $config->setRetainImageContent(false);
-            $pdf = (new Parser([], $config))->parseFile($path);
-            return trim($pdf->getText());
+            // In-memory parsing ($useInMemoryStream = true, the default) is
+            // both faster and far lighter than the previous smalot-based
+            // parser, so there is no need for the slower file-handle mode.
+            $document = (new PdfParser())->parseFile($path);
+            return trim($document->getText());
         } catch (\Throwable $e) {
             throw new ExtractionException(
                 "Failed to extract text from $path: " . $e->getMessage(),

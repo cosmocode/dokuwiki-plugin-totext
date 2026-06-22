@@ -1,151 +1,108 @@
 {
     "packages": [
         {
-            "name": "smalot/pdfparser",
-            "version": "dev-memory",
-            "version_normalized": "dev-memory",
+            "name": "prinsfrank/glyph-lists",
+            "version": "v1.0.0",
+            "version_normalized": "1.0.0.0",
             "source": {
                 "type": "git",
-                "url": "https://github.com/cosmocode/pdfparser.git",
-                "reference": "ac6fd8b907dc518b5e6302dd009926630f29319c"
+                "url": "https://github.com/PrinsFrank/glyph-lists.git",
+                "reference": "7e06bb5b393dcf74a6ef59741582f365ca346239"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/cosmocode/pdfparser/zipball/ac6fd8b907dc518b5e6302dd009926630f29319c",
-                "reference": "ac6fd8b907dc518b5e6302dd009926630f29319c",
+                "url": "https://api.github.com/repos/PrinsFrank/glyph-lists/zipball/7e06bb5b393dcf74a6ef59741582f365ca346239",
+                "reference": "7e06bb5b393dcf74a6ef59741582f365ca346239",
                 "shasum": ""
             },
             "require": {
-                "ext-iconv": "*",
-                "ext-zlib": "*",
-                "php": ">=7.1",
-                "symfony/polyfill-mbstring": "^1.18"
+                "php": "^8.1"
             },
-            "time": "2026-06-18T20:49:29+00:00",
+            "require-dev": {
+                "friendsofphp/php-cs-fixer": "^3.87",
+                "phpstan/phpstan": "^2.1",
+                "phpstan/phpstan-strict-rules": "^2.0",
+                "phpunit/phpunit": "^11.5"
+            },
+            "time": "2025-09-18T18:11:26+00:00",
             "type": "library",
             "installation-source": "dist",
             "autoload": {
-                "psr-0": {
-                    "Smalot\\PdfParser\\": "src/"
-                }
-            },
-            "autoload-dev": {
                 "psr-4": {
-                    "PerformanceTests\\": "tests/Performance/",
-                    "PHPUnitTests\\": "tests/PHPUnit/"
-                }
-            },
-            "license": [
-                "LGPL-3.0"
-            ],
-            "authors": [
-                {
-                    "name": "Sebastien MALOT",
-                    "email": "sebastien@malot.fr"
-                }
-            ],
-            "description": "Pdf parser library. Can read and extract information from pdf file.",
-            "homepage": "https://www.pdfparser.org",
-            "keywords": [
-                "PDF",
-                "extract",
-                "parse",
-                "parser",
-                "text"
-            ],
-            "support": {
-                "issues": "https://github.com/smalot/pdfparser/issues",
-                "source": "https://github.com/cosmocode/pdfparser/tree/memory"
-            },
-            "install-path": "../smalot/pdfparser"
-        },
-        {
-            "name": "symfony/polyfill-mbstring",
-            "version": "v1.38.2",
-            "version_normalized": "1.38.2.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/polyfill-mbstring.git",
-                "reference": "d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/polyfill-mbstring/zipball/d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6",
-                "reference": "d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6",
-                "shasum": ""
-            },
-            "require": {
-                "ext-iconv": "*",
-                "php": ">=7.2"
-            },
-            "provide": {
-                "ext-mbstring": "*"
-            },
-            "suggest": {
-                "ext-mbstring": "For best performance"
-            },
-            "time": "2026-05-27T06:59:30+00:00",
-            "type": "library",
-            "extra": {
-                "thanks": {
-                    "url": "https://github.com/symfony/polyfill",
-                    "name": "symfony/polyfill"
-                }
-            },
-            "installation-source": "dist",
-            "autoload": {
-                "files": [
-                    "bootstrap.php"
-                ],
-                "psr-4": {
-                    "Symfony\\Polyfill\\Mbstring\\": ""
+                    "PrinsFrank\\GlyphLists\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
-            "authors": [
-                {
-                    "name": "Nicolas Grekas",
-                    "email": "p@tchwork.com"
-                },
-                {
-                    "name": "Symfony Community",
-                    "homepage": "https://symfony.com/contributors"
-                }
-            ],
-            "description": "Symfony polyfill for the Mbstring extension",
-            "homepage": "https://symfony.com",
-            "keywords": [
-                "compatibility",
-                "mbstring",
-                "polyfill",
-                "portable",
-                "shim"
-            ],
+            "description": "Pre-parsed glyph lists as enums",
             "support": {
-                "source": "https://github.com/symfony/polyfill-mbstring/tree/v1.38.2"
+                "issues": "https://github.com/PrinsFrank/glyph-lists/issues",
+                "source": "https://github.com/PrinsFrank/glyph-lists/tree/v1.0.0"
             },
             "funding": [
                 {
-                    "url": "https://symfony.com/sponsor",
-                    "type": "custom"
-                },
-                {
-                    "url": "https://github.com/fabpot",
+                    "url": "https://github.com/PrinsFrank",
                     "type": "github"
-                },
-                {
-                    "url": "https://github.com/nicolas-grekas",
-                    "type": "github"
-                },
-                {
-                    "url": "https://tidelift.com/funding/github/packagist/symfony/symfony",
-                    "type": "tidelift"
                 }
             ],
-            "install-path": "../symfony/polyfill-mbstring"
+            "install-path": "../prinsfrank/glyph-lists"
+        },
+        {
+            "name": "prinsfrank/pdfparser",
+            "version": "v3.1.0",
+            "version_normalized": "3.1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/PrinsFrank/pdfparser.git",
+                "reference": "b39b466dd0e2ea3b89a1b2300bfd99acef70abd6"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/PrinsFrank/pdfparser/zipball/b39b466dd0e2ea3b89a1b2300bfd99acef70abd6",
+                "reference": "b39b466dd0e2ea3b89a1b2300bfd99acef70abd6",
+                "shasum": ""
+            },
+            "require": {
+                "ext-gd": "*",
+                "ext-iconv": "*",
+                "ext-zlib": "*",
+                "php": "^8.2",
+                "prinsfrank/glyph-lists": "^1.0"
+            },
+            "require-dev": {
+                "friendsofphp/php-cs-fixer": "^3.65",
+                "phpstan/phpstan": "2.2.1",
+                "phpstan/phpstan-deprecation-rules": "^2.0",
+                "phpstan/phpstan-strict-rules": "^2",
+                "phpunit/phpunit": "^11.5",
+                "symfony/yaml": "^7.3"
+            },
+            "time": "2026-06-12T17:49:18+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "PrinsFrank\\PdfParser\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "PHP library to Read and extract text & images from PDFs - Fast & Low memory - Built from scratch",
+            "support": {
+                "issues": "https://github.com/PrinsFrank/pdfparser/issues",
+                "source": "https://github.com/PrinsFrank/pdfparser/tree/v3.1.0"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/PrinsFrank",
+                    "type": "github"
+                }
+            ],
+            "install-path": "../prinsfrank/pdfparser"
         }
     ],
     "dev": true,

@@ -1,0 +1,78 @@
+<?php
+declare(strict_types=1);
+
+namespace PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name;
+
+use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
+use PrinsFrank\PdfParser\Document\Document;
+use PrinsFrank\PdfParser\Document\Filter\Decode\ASCII85Decode;
+use PrinsFrank\PdfParser\Document\Filter\Decode\ASCIIHexDecode;
+use PrinsFrank\PdfParser\Document\Filter\Decode\CCITTFaxDecode;
+use PrinsFrank\PdfParser\Document\Filter\Decode\FlateDecode;
+use PrinsFrank\PdfParser\Document\Filter\Decode\LZWFlatePredictorValue;
+use PrinsFrank\PdfParser\Document\Image\ImageType;
+use PrinsFrank\PdfParser\Exception\ParseFailureException;
+
+enum FilterNameValue: string implements NameValue {
+    case ASCII_HEX_DECODE = 'ASCIIHexDecode';
+    case ASCII_85_DECODE = 'ASCII85Decode';
+    case LZW_DECODE = 'LZWDecode';
+    case FLATE_DECODE = 'FlateDecode';
+    case RUN_LENGTH_DECODE = 'RunLengthDecode';
+    case CCITT_FAX_DECODE = 'CCITTFaxDecode';
+    case JBIG2_DECODE = 'JBIG2Decode';
+    case DCT_DECODE = 'DCTDecode'; // Grayscale or color image data encoded in JPEG baseline format
+    case JPX_DECODE = 'JPXDecode';
+    case CRYPT = 'Crypt';
+    case ADOBE_PPK_LITE = 'Adobe.PPKLite';
+    case ADOBE_PUB_SEC = 'Adobe.PubSec';
+    case ENTRUST_PPKEF = 'Entrust.PPKEF';
+    case CICI_SIGN_IT = 'CIC.SignIt';
+    case VERISIGN_PPKVS = 'Verisign.PPKVS';
+
+    public function decodeBinary(string $content, ?Dictionary $dictionary, ?Document $document): string {
+        $decodeParams = $dictionary?->getSubDictionary($document, DictionaryKey::DECODE_PARMS);
+
+        return match ($this) {
+            self::JPX_DECODE,
+            self::JBIG2_DECODE,
+            self::DCT_DECODE => $content, // Don't decode JPEG content
+            self::FLATE_DECODE => FlateDecode::decodeBinary(
+                $content,
+                $decodeParams !== null && ($predictorValue = LZWFlatePredictorValue::tryFrom((int) $decodeParams->getValueForKey($document, DictionaryKey::PREDICTOR, IntegerValue::class)?->value)) !== null
+                    ? $predictorValue
+                    : LZWFlatePredictorValue::None,
+                ($decodeParams?->getValueForKey($document, DictionaryKey::COLUMNS, IntegerValue::class)->value ?? 1)
+                    * ($decodeParams?->getValueForKey($document, DictionaryKey::COLORS, IntegerValue::class)->value ?? 1),
+            ),
+            self::CCITT_FAX_DECODE => CCITTFaxDecode::addHeaderAndIFD(
+                $content,
+                $decodeParams?->getValueForKey($document, DictionaryKey::COLUMNS, IntegerValue::class)->value
+                    ?? throw new ParseFailureException('Missing columns'),
+                $decodeParams->getValueForKey($document, DictionaryKey::ROWS, IntegerValue::class)->value
+                    ?? $dictionary->getValueForKey($document, DictionaryKey::HEIGHT, IntegerValue::class)->value
+                    ?? throw new ParseFailureException('Missing rows'),
+                $decodeParams->getValueForKey($document, DictionaryKey::K, IntegerValue::class)->value
+                    ?? throw new ParseFailureException('Missing K'),
+            ),
+            self::ASCII_85_DECODE => ASCII85Decode::decodeBinary($content),
+            self::ASCII_HEX_DECODE => ASCIIHexDecode::decodeBinary($content),
+            default => throw new ParseFailureException(sprintf('Content "%.100s..." cannot be decoded for filter "%s"', $content, $this->name)),
+        };
+    }
+
+    public function getImageType(): ?ImageType {
+        return match ($this) {
+            self::LZW_DECODE => ImageType::TIFF,
+            self::FLATE_DECODE => ImageType::PNG,
+            self::RUN_LENGTH_DECODE => ImageType::RAW,
+            self::CCITT_FAX_DECODE => ImageType::TIFF_FAX,
+            self::DCT_DECODE => ImageType::JPEG,
+            self::JPX_DECODE => ImageType::JPEG2000,
+            self::JBIG2_DECODE => ImageType::JBIG2,
+            default => null,
+        };
+    }
+}
