@@ -18,6 +18,8 @@ use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\PositionedTextEle
  * And for each text element check if there is significant overlap above a threshold. Continue until all elements are processed
  */
 class TextOverlapStrategy implements LineGroupingStrategy {
+    use MatrixOffsetSpacing;
+
     /** @param int<0, 100> $overlapPercentage */
     public function __construct(
         private readonly int $overlapPercentage = 90,
@@ -25,9 +27,12 @@ class TextOverlapStrategy implements LineGroupingStrategy {
 
     #[Override]
     public function group(array $positionedTextElements): iterable {
+        // Order lines top to bottom by descending offsetY. Not abs(offsetY): a page whose MediaBox origin sits
+        // above its content (negative lower-left, e.g. [0 -792 612 0]) has all-negative offsetY with the topmost
+        // line the least negative, which abs() would reverse.
         usort(
             $positionedTextElements,
-            fn(PositionedTextElement $a, PositionedTextElement $b): int => abs($b->absoluteMatrix->offsetY) <=> abs($a->absoluteMatrix->offsetY),
+            fn(PositionedTextElement $a, PositionedTextElement $b): int => $b->absoluteMatrix->offsetY <=> $a->absoluteMatrix->offsetY,
         );
 
         /** @var array<int, true> $processedIndices */
@@ -45,6 +50,8 @@ class TextOverlapStrategy implements LineGroupingStrategy {
 
             $positionedTextElementsOnLine = [$highestPositionedTextElement];
             $processedIndices[$i] = true;
+            $lineLeftX = $highestPositionedTextElement->absoluteMatrix->offsetX;
+            $lineRightX = $highestPositionedTextElement->absoluteMatrix->offsetX;
             for ($j = $i + 1; $j < $nrOfItems; $j++) {
                 if (isset($processedIndices[$j])) {
                     continue;
@@ -58,11 +65,23 @@ class TextOverlapStrategy implements LineGroupingStrategy {
                 $currentElementBottom = $positionedTextElement->absoluteMatrix->offsetY;
                 $currentElementTop = $currentElementBottom + $positionedTextElementHeight;
 
-                $overlap = min($highestElementTop, $currentElementTop) - max($highestPositionedTextElementBottom, $currentElementBottom);
                 $smallestElementHeight = min($positionedTextElementHeight, $highestPositionedTextElementHeight);
-                if ($smallestElementHeight !== 0.0 && $overlap / $smallestElementHeight * 100 >= $this->overlapPercentage) {
+                if ($smallestElementHeight === 0.0) {
+                    continue;
+                }
+
+                $overlap = min($highestElementTop, $currentElementTop) - max($highestPositionedTextElementBottom, $currentElementBottom);
+                $belongsOnLine = $overlap / $smallestElementHeight * 100 >= $this->overlapPercentage;
+                $isEnclosedSubscript = $overlap > 0.0
+                    && $positionedTextElementHeight < $highestPositionedTextElementHeight
+                    && $positionedTextElement->absoluteMatrix->offsetX >= $lineLeftX
+                    && $positionedTextElement->absoluteMatrix->offsetX <= $lineRightX;
+
+                if ($belongsOnLine || $isEnclosedSubscript) {
                     $positionedTextElementsOnLine[] = $positionedTextElement;
                     $processedIndices[$j] = true;
+                    $lineLeftX = min($lineLeftX, $positionedTextElement->absoluteMatrix->offsetX);
+                    $lineRightX = max($lineRightX, $positionedTextElement->absoluteMatrix->offsetX);
                 }
             }
 

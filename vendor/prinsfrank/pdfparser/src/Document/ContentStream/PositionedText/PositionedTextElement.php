@@ -2,110 +2,108 @@
 
 namespace PrinsFrank\PdfParser\Document\ContentStream\PositionedText;
 
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\EncodingNameValue;
+use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextSegment\TextSegment;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
 use PrinsFrank\PdfParser\Document\Document;
-use PrinsFrank\PdfParser\Document\Generic\Character\LiteralStringEscapeCharacter;
 use PrinsFrank\PdfParser\Document\Object\Decorator\Font;
-use PrinsFrank\PdfParser\Document\Object\Decorator\Page;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 readonly class PositionedTextElement {
+    public const WORD_BREAK_THRESHOLD_EM = 0.25;
+
+    /** @param list<TextSegment> $textSegments */
     public function __construct(
-        public string $rawTextContent,
+        public array $textSegments,
         public TransformationMatrix $absoluteMatrix,
         public TextState $textState,
     ) {}
 
-    public function getFont(Document $document, Page $page): Font {
+    public function getFont(Document $document): Font {
         if ($this->textState->fontName === null) {
             throw new ParseFailureException('Unable to locate font for text element');
         }
 
-        return $page->getFontDictionary()?->getObjectForReference($document, $this->textState->fontName, Font::class)
+        $reference = $this->textState->resourceChain->resolve($document, DictionaryKey::FONT, $this->textState->fontName);
+
+        return ($reference !== null ? $document->getObject($reference->objectNumber, Font::class) : null)
             ?? throw new ParseFailureException(sprintf('Unable to locate font with reference "/%s"', $this->textState->fontName->value));
     }
 
     /** @throws ParseFailureException */
-    public function getText(Document $document, Page $page): string {
-        if (($result = preg_match_all('/(?<chars>(<(\\\\>|[^>])*>)|(\((\\\\\)|[^)])*\)))(?<offset>-?[0-9]+(\.[0-9]+)?)?/', $this->rawTextContent, $matches, PREG_SET_ORDER)) === false) {
-            throw new ParseFailureException(sprintf('Error with regex'));
-        } elseif ($result === 0) {
-            throw new ParseFailureException(sprintf('Operands "%s" is not in a recognized format', $this->rawTextContent));
-        }
+    public function getText(Document $document): string {
+        $font = $this->getFont($document);
+        $differences = $font->getDifferences();
+        $encoding = $font->getEncoding();
+        $toUnicodeCMap = $font->getToUnicodeCMap() ?? $font->getToUnicodeCMapDescendantFont();
 
-        $string = '';
-        $font = $this->getFont($document, $page);
-        foreach ($matches as $match) {
-            if (str_starts_with($match['chars'], '(') && str_ends_with($match['chars'], ')')) {
-                $unescapedChars = LiteralStringEscapeCharacter::unescapeCharacters(substr($match['chars'], 1, -1));
-                if (preg_match('/^\\\\\d{3}$/', substr($match['chars'], 1, -1)) === 1 && ($glyph = $font->getDifferences()?->getGlyph((int) octdec(substr($match['chars'], 2, -1)))) !== null) {
-                    $chars = $glyph->getChar();
-                } elseif (strlen($unescapedChars) === 1 && ($glyph = $font->getDifferences()?->getGlyph(ord($unescapedChars))) !== null) {
-                    $chars = $glyph->getChar();
-                } elseif (in_array($encoding = $font->getEncoding(), [EncodingNameValue::MacExpertEncoding, EncodingNameValue::WinAnsiEncoding], true) && $font->getDifferences() === null) {
-                    $chars = $encoding->decodeString($unescapedChars);
-                } elseif (($toUnicodeCMap = $font->getToUnicodeCMap() ?? $font->getToUnicodeCMapDescendantFont()) !== null) {
-                    $chars = $toUnicodeCMap->textToUnicode(bin2hex($unescapedChars));
-                } elseif ($encoding !== null) {
-                    $chars = $encoding->decodeString($unescapedChars);
-                } else {
-                    $chars = $unescapedChars;
-                }
-
-                $string .= $chars;
-            } elseif (str_starts_with($match['chars'], '<') && str_ends_with($match['chars'], '>')) {
-                $chars = substr($match['chars'], 1, -1);
-                if (($toUnicodeCMap = $font->getToUnicodeCMap() ?? $font->getToUnicodeCMapDescendantFont()) !== null) {
-                    $string .= $toUnicodeCMap->textToUnicode($chars);
-                } elseif (($encoding = $font->getEncoding()) !== null) {
-                    $string .= $encoding->decodeString(implode('', array_map(fn(string $character) => mb_chr((int) hexdec($character)), str_split($chars, 2))));
-                } else {
-                    $string .= EncodingNameValue::IdentityH->decodeString($chars);
-                }
-            } else {
-                throw new ParseFailureException(sprintf('Unrecognized character group format "%s"', $match['chars']));
+        $text = '';
+        $previousOffset = null;
+        foreach ($this->textSegments as $textSegment) {
+            $textSegmentText = $textSegment->getText($differences, $encoding, $toUnicodeCMap);
+            if ($previousOffset !== null
+                && $previousOffset / 1000 <= -self::WORD_BREAK_THRESHOLD_EM
+                && str_ends_with($text, ' ') === false
+                && str_starts_with($textSegmentText, ' ') === false) {
+                $text .= ' ';
             }
 
-            if (isset($match['offset']) && (float) $match['offset'] < -100) {
-                $string .= ' ';
-            }
+            $text .= $textSegmentText;
+            $previousOffset = $textSegment->offset;
         }
 
-        return $string;
+        return $text;
     }
 
     /** @return list<int> */
     public function getCodePoints(): array {
         $codePoints = [];
-        if (($result = preg_match_all('/(?<chars>(<(\\\\>|[^>])*>)|(\((\\\\\)|[^)])*\)))(?<offset>-?[0-9]+(\.[0-9]+)?)?/', $this->rawTextContent, $matches, PREG_SET_ORDER)) === false) {
-            throw new ParseFailureException(sprintf('Error with regex'));
-        } elseif ($result === 0) {
-            throw new ParseFailureException(sprintf('Operands "%s" is not in a recognized format', $this->rawTextContent));
-        }
-
-        foreach ($matches as $match) {
-            if (str_starts_with($match['chars'], '(') && str_ends_with($match['chars'], ')')) {
-                $chars = str_replace(['\(', '\)', '\n', '\r'], ['(', ')', "\n", "\r"], substr($match['chars'], 1, -1));
-                $chars = preg_replace_callback('/\\\\([0-7]{3})/', fn(array $matches) => mb_chr((int) octdec($matches[1])), $chars)
-                    ?? throw new ParseFailureException();
-                foreach (str_split($chars) as $char) {
-                    $codePoints[] = ord($char);
-                }
-            } elseif (str_starts_with($match['chars'], '<') && str_ends_with($match['chars'], '>')) {
-                foreach (str_split(substr($match['chars'], 1, -1), 4) as $char) {
-                    $codePoints[] = is_int($codePoint = hexdec($char)) ? $codePoint : throw new ParseFailureException();
-                }
-            } else {
-                throw new ParseFailureException(sprintf('Unrecognized character group format "%s"', $match['chars']));
-            }
+        foreach ($this->textSegments as $textSegment) {
+            array_push($codePoints, ...$textSegment->getCodePoints());
         }
 
         return $codePoints;
     }
 
     public function getHeight(): float {
-        return ($this->textState->fontSize ?? 12)
-            * abs($this->absoluteMatrix->scaleY)
+        return $this->textState->getFontSize()
+            * hypot($this->absoluteMatrix->shearY, $this->absoluteMatrix->scaleY) // Length of the glyph's vertical axis: its extent perpendicular to the baseline
             * ($this->textState->scale / 100);
+    }
+
+    /**
+     * The distance, in device space, that showing this element advances the text cursor, per the displacement
+     * formula in the PDF spec §9.4.4:
+     *
+     *   ((w0 − Tj/1000)·Tfs + Tc + Tw·[single-byte code 32]) · Th , transformed by the text rendering matrix.
+     *
+     * Reconstructed here because Tj/TJ do not advance the text matrix in this parser. The text-space advance is
+     * horizontal; transformed by the matrix it becomes a page-space vector along the baseline. This returns that
+     * vector's signed projection onto the unit vector $direction -- a dot product, so it keeps its sign. The
+     * default direction is page X (Vector(1, 0)), giving the advance · scaleX exactly as before; pass a baseline
+     * unit vector to measure the advance along a rotated baseline.
+     */
+    public function getAdvanceWidth(Document $document, Vector $direction = new Vector(1.0, 0.0)): float {
+        $font = $this->getFont($document);
+        $fontSize = $this->textState->getFontSize();
+
+        $glyphAdvance = $font->getWidthForChars($this->getCodePoints(), $this->textState); // Σ (w0·Tfs + Tc + Tw·[code 32])
+        $offsetAdvance = -($this->getTotalOffset() / 1000) * $fontSize;                     // − Σ(Tj)/1000 · Tfs
+
+        $textSpaceAdvance = ($glyphAdvance + $offsetAdvance) * ($this->textState->scale / 100); // · Th
+
+        // Project the page-space advance vector (the text-space advance along the baseline) onto $direction.
+        return $textSpaceAdvance * $this->absoluteMatrix->baselineVector()->dot($direction);
+    }
+
+    /** The sum of the TJ adjustment numbers in this element's segments, in thousandths of an em. */
+    public function getTotalOffset(): float {
+        $totalOffset = 0.0;
+        foreach ($this->textSegments as $textSegment) {
+            if ($textSegment->offset !== null) {
+                $totalOffset += $textSegment->offset;
+            }
+        }
+
+        return $totalOffset;
     }
 }

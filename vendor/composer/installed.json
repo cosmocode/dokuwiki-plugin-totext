@@ -51,17 +51,17 @@
         },
         {
             "name": "prinsfrank/pdfparser",
-            "version": "v3.1.0",
-            "version_normalized": "3.1.0.0",
+            "version": "dev-dev",
+            "version_normalized": "dev-dev",
             "source": {
                 "type": "git",
-                "url": "https://github.com/PrinsFrank/pdfparser.git",
-                "reference": "b39b466dd0e2ea3b89a1b2300bfd99acef70abd6"
+                "url": "https://github.com/cosmocode/prinsfrank-pdfparser.git",
+                "reference": "4feb97eddec75a18d42cea1031c58619a6596f01"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/PrinsFrank/pdfparser/zipball/b39b466dd0e2ea3b89a1b2300bfd99acef70abd6",
-                "reference": "b39b466dd0e2ea3b89a1b2300bfd99acef70abd6",
+                "url": "https://api.github.com/repos/cosmocode/prinsfrank-pdfparser/zipball/4feb97eddec75a18d42cea1031c58619a6596f01",
+                "reference": "4feb97eddec75a18d42cea1031c58619a6596f01",
                 "shasum": ""
             },
             "require": {
@@ -73,13 +73,13 @@
             },
             "require-dev": {
                 "friendsofphp/php-cs-fixer": "^3.65",
-                "phpstan/phpstan": "2.2.1",
+                "phpstan/phpstan": "2.2.5",
                 "phpstan/phpstan-deprecation-rules": "^2.0",
                 "phpstan/phpstan-strict-rules": "^2",
                 "phpunit/phpunit": "^11.5",
                 "symfony/yaml": "^7.3"
             },
-            "time": "2026-06-12T17:49:18+00:00",
+            "time": "2026-07-06T07:28:43+00:00",
             "type": "library",
             "installation-source": "dist",
             "autoload": {
@@ -87,21 +87,38 @@
                     "PrinsFrank\\PdfParser\\": "src/"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
+            "autoload-dev": {
+                "psr-4": {
+                    "PrinsFrank\\PdfParser\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "cs": [
+                    "php-cs-fixer fix --allow-risky=yes --dry-run"
+                ],
+                "cs:fix": [
+                    "php-cs-fixer fix --allow-risky=yes"
+                ],
+                "stan": [
+                    "phpstan analyse --memory-limit 4G -v"
+                ],
+                "unit": [
+                    "phpunit --testsuite=Unit"
+                ],
+                "feature": [
+                    "phpunit --testsuite=Feature"
+                ],
+                "update-content": [
+                    "./tests/Samples/update-content"
+                ]
+            },
             "license": [
                 "MIT"
             ],
             "description": "PHP library to Read and extract text & images from PDFs - Fast & Low memory - Built from scratch",
             "support": {
-                "issues": "https://github.com/PrinsFrank/pdfparser/issues",
-                "source": "https://github.com/PrinsFrank/pdfparser/tree/v3.1.0"
+                "source": "https://github.com/cosmocode/prinsfrank-pdfparser/tree/dev"
             },
-            "funding": [
-                {
-                    "url": "https://github.com/PrinsFrank",
-                    "type": "github"
-                }
-            ],
             "install-path": "../prinsfrank/pdfparser"
         }
     ],

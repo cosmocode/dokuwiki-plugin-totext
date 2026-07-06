@@ -134,9 +134,13 @@ the PDF won't parse, the file can't be read). The gate throws an
 
 ### Dependencies
 
-- `prinsfrank/pdfparser` (v3.x, MIT, zero PHP dependencies — pulls only
+- `prinsfrank/pdfparser` (MIT, zero PHP dependencies — pulls only
   `prinsfrank/glyph-lists`) is bundled in the committed `vendor/` directory (pulled
-  via the plugin's own `composer.json`). DokuWiki core auto-requires
+  via the plugin's own `composer.json`). We track the **cosmocode fork's `dev`
+  branch** (`dev-dev`, VCS repo `github.com/cosmocode/prinsfrank-pdfparser`) rather
+  than an upstream tag: it carries fixes not yet released upstream (native UTF-16BE
+  Info-string decoding and Form-XObject text extraction, both noted below).
+  DokuWiki core auto-requires
   `lib/plugins/totext/vendor/autoload.php` for enabled plugins. `PdfExtractor`
   parses once via `(new PrinsFrank\PdfParser\PdfParser())->parseFile($path)`, takes
   the body from `->getText()` and reads the Info dictionary
@@ -144,21 +148,17 @@ the PDF won't parse, the file can't be read). The gate throws an
   mode, which benchmarked both faster and far lighter than the previous
   smalot/cosmocode fork (no `setRetainImageContent` tuning needed). It requires
   `ext-gd`/`ext-iconv`/`ext-zlib`, enforced transitively by the package.
-- **UTF-16BE Info-string shim** (`PdfExtractor::normalizePdfString()`): prinsfrank
-  ≤ v3.1.0 does not decode UTF-16BE text strings stored as PDF *literal* strings.
-  Their bytes arrive expanded one-codepoint-per-byte (`mb_chr` on the octal
-  escapes), so a UTF-16BE BOM surfaces as the mojibake `þÿ`
-  (`0xC3 0xBE 0xC3 0xBF`); the shim collapses that back to ISO-8859-1 to recover
-  the raw `0xFE 0xFF` BOM, then `iconv`s UTF-16BE→UTF-8. (`tika-sample.pdf`'s
-  Author `Bertrand Delacrétaz` exercises this.) A genuinely raw BOM is handled
-  too. **Remove once decoding is fixed upstream.**
-- **Known limitation:** prinsfrank/pdfparser ≤ v3.1.0 does **not** extract text that
-  lives inside a Form XObject (page content painted with the `Do` operator — common
-  in Quartz/macOS, Firefox and Chrome PDFs, including `_test/data/tika-sample.pdf`,
-  so `PdfExtractorTest::testExtractsText` and the factory roundtrip's `pdf` case
-  fail against stock v3.1.0). This is the **body text** only — the PDF **metadata**
-  test passes regardless, because the Info dictionary is read independently of
-  `getText()`.
+- **UTF-16BE Info strings** decode natively on the cosmocode `dev` fork, so
+  `extractMetadata()` just `trim()`s the values — no shim. (`tika-sample.pdf`'s
+  Author `Bertrand Delacrétaz` exercises this: the é comes through correctly.)
+  Stock upstream ≤ v3.1.0 needed a `normalizePdfString()` shim here (mojibake `þÿ`
+  → ISO-8859-1 → `iconv` UTF-16BE→UTF-8); it was removed when we moved to the fork.
+- **Form-XObject text** (page content painted with the `Do` operator — common in
+  Quartz/macOS, Firefox and Chrome PDFs, including `_test/data/tika-sample.pdf`) is
+  extracted by the cosmocode `dev` fork; `PdfExtractorTest::testExtractsText` and the
+  factory roundtrip's `pdf` case rely on it. Stock upstream ≤ v3.1.0 does **not**
+  extract this text (metadata was unaffected either way, since the Info dictionary is
+  read independently of `getText()`).
 - `splitbrain\PHPArchive\Zip` is **not** bundled — core provides it globally.
 - Text encoding defers to core's `dokuwiki\Utf8\Clean` / `dokuwiki\Utf8\Conversion`;
   JPEG metadata uses core's `JpegMeta`; TIFF metadata uses the `exif` extension.

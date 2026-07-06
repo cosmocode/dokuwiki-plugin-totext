@@ -12,7 +12,10 @@ use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\ArrayValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\DictionaryValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\NameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue;
+use PrinsFrank\PdfParser\Document\Document;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
+use PrinsFrank\PdfParser\Exception\RuntimeException;
+use PrinsFrank\PdfParser\Stream\Stream;
 
 /** Can be both from a crossReferenceTable or a crossReferenceStream */
 class CrossReferenceSource {
@@ -26,7 +29,8 @@ class CrossReferenceSource {
         $this->crossReferenceSections = $crossReferenceSections;
     }
 
-    public function getCrossReferenceEntry(int $objNumber): CrossReferenceEntryInUseObject|CrossReferenceEntryCompressed|null {
+    /** @throws RuntimeException */
+    public function getCrossReferenceEntry(int $objNumber, Document $document): CrossReferenceEntryInUseObject|CrossReferenceEntryCompressed|null {
         foreach ($this->crossReferenceSections as $crossReferenceSection) {
             $crossReferenceEntry = $crossReferenceSection->getCrossReferenceEntry($objNumber);
             if ($crossReferenceEntry !== null) {
@@ -74,5 +78,15 @@ class CrossReferenceSource {
         }
 
         return $firstId;
+    }
+
+    public function hasInvalidByteOffset(Stream $stream): bool {
+        foreach ($this->crossReferenceSections as $crossReferenceSection) {
+            if ($crossReferenceSection->hasInvalidByteOffset($stream)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

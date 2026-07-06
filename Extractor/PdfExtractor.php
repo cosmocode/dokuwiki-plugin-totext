@@ -101,7 +101,7 @@ class PdfExtractor implements ExtractorInterface
             if ($value === null) {
                 continue;
             }
-            $value = $this->normalizePdfString($value);
+            $value = trim($value);
             if ($value !== '') {
                 $meta[$key] = $value;
             }
@@ -122,30 +122,5 @@ class PdfExtractor implements ExtractorInterface
         return $info->getDictionary()
             ->getValueForKey($info->document, $key, TextStringValue::class)
             ?->getText();
-    }
-
-    /**
-     * Normalise a raw Info-dictionary text string to trimmed UTF-8.
-     *
-     * Temporary shim: prinsfrank/pdfparser (≤ v3.1.0) does not decode UTF-16BE
-     * text strings stored as PDF literal strings. Their bytes arrive expanded
-     * one-codepoint-per-byte (mb_chr on the octal escapes), so a UTF-16BE
-     * byte-order mark surfaces as the mojibake "þÿ" (0xC3 0xBE 0xC3 0xBF);
-     * collapsing that back to ISO-8859-1 restores the raw 0xFE 0xFF BOM. A
-     * genuinely raw BOM is decoded directly. Remove once decoding is fixed
-     * upstream.
-     *
-     * @param string $v the raw value from the Info dictionary
-     * @return string trimmed UTF-8
-     */
-    protected function normalizePdfString(string $v): string
-    {
-        if (str_starts_with($v, "\xC3\xBE\xC3\xBF")) {
-            $v = mb_convert_encoding($v, 'ISO-8859-1', 'UTF-8');
-        }
-        if (str_starts_with($v, "\xFE\xFF")) {
-            $v = iconv('UTF-16BE', 'UTF-8//IGNORE', substr($v, 2)) ?: $v;
-        }
-        return trim($v);
     }
 }
