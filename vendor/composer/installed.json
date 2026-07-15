@@ -56,12 +56,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/cosmocode/prinsfrank-pdfparser.git",
-                "reference": "4feb97eddec75a18d42cea1031c58619a6596f01"
+                "reference": "799c756be221cef9f86494c7cfd5065cbfec4733"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/cosmocode/prinsfrank-pdfparser/zipball/4feb97eddec75a18d42cea1031c58619a6596f01",
-                "reference": "4feb97eddec75a18d42cea1031c58619a6596f01",
+                "url": "https://api.github.com/repos/cosmocode/prinsfrank-pdfparser/zipball/799c756be221cef9f86494c7cfd5065cbfec4733",
+                "reference": "799c756be221cef9f86494c7cfd5065cbfec4733",
                 "shasum": ""
             },
             "require": {
@@ -79,7 +79,7 @@
                 "phpunit/phpunit": "^11.5",
                 "symfony/yaml": "^7.3"
             },
-            "time": "2026-07-06T07:28:43+00:00",
+            "time": "2026-07-15T11:09:46+00:00",
             "type": "library",
             "installation-source": "dist",
             "autoload": {

@@ -3,7 +3,7 @@
         'name' => 'splitbrain/dokuwiki-plugin-totext',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '0fbee1892eb8b7339ce48e27e48e3fc821a8695f',
+        'reference' => 'fd4f7c47d290ec79c2b911626d1d262c1e3d161e',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -22,7 +22,7 @@
         'prinsfrank/pdfparser' => array(
             'pretty_version' => 'dev-dev',
             'version' => 'dev-dev',
-            'reference' => '4feb97eddec75a18d42cea1031c58619a6596f01',
+            'reference' => '799c756be221cef9f86494c7cfd5065cbfec4733',
             'type' => 'library',
             'install_path' => __DIR__ . '/../prinsfrank/pdfparser',
             'aliases' => array(),
@@ -31,7 +31,7 @@
         'splitbrain/dokuwiki-plugin-totext' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '0fbee1892eb8b7339ce48e27e48e3fc821a8695f',
+            'reference' => 'fd4f7c47d290ec79c2b911626d1d262c1e3d161e',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

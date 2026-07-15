@@ -41,6 +41,7 @@ readonly class TextStringValue implements DictionaryValue {
         return PDFDocEncoding::textToUnicode($binaryValue);
     }
 
+    /** @throws ParseFailureException */
     public function getBinaryString(): string {
         if (str_starts_with($this->textStringValue, '(') && str_ends_with($this->textStringValue, ')')) {
             $value = preg_replace_callback(
@@ -57,7 +58,18 @@ readonly class TextStringValue implements DictionaryValue {
         }
 
         if (str_starts_with($this->textStringValue, '<') && str_ends_with($this->textStringValue, '>')) {
-            $string = substr($this->textStringValue, 1, -1);
+            // White-space characters may appear within a hexadecimal string and shall be ignored (7.3.4.3).
+            $string = preg_replace('/[\x00\x09\x0A\x0C\x0D\x20]+/', '', substr($this->textStringValue, 1, -1))
+                ?? throw new ParseFailureException();
+            if (preg_match('/^[0-9A-Fa-f]*$/', $string) !== 1) {
+                throw new ParseFailureException(sprintf('Invalid hex string %s', $this->textStringValue));
+            }
+
+            // If there is an odd number of digits, the final digit shall be assumed to be 0 (7.3.4.3).
+            if (strlen($string) % 2 !== 0) {
+                $string .= '0';
+            }
+
             $binaryValue = hex2bin($string);
             if ($binaryValue === false) {
                 throw new ParseFailureException('Invalid hex string');
