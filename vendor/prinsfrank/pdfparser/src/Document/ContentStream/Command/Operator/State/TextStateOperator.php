@@ -6,8 +6,10 @@ namespace PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State;
 use Override;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\Interaction\InteractsWithTextState;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextState;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Page;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\XObject;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\ExtendedDictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
 use PrinsFrank\PdfParser\Exception\InvalidArgumentException;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
@@ -23,7 +25,7 @@ enum TextStateOperator: string implements InteractsWithTextState {
 
     /** @throws ParseFailureException|InvalidArgumentException */
     #[Override]
-    public function applyToTextState(string $operands, TextState $textState): TextState {
+    public function applyToTextState(string $operands, TextState $textState, Page|XObject $context, ?Page $parent): TextState {
         if ($this === self::CHAR_SPACE) {
             return $textState->withCharSpace((float) $operands);
         }
@@ -50,8 +52,9 @@ enum TextStateOperator: string implements InteractsWithTextState {
                 throw new InvalidArgumentException(sprintf('Invalid font operand "%s" for Tf operator', substr($operands, 0, 200)));
             }
 
+            $fontReference = DictionaryKey::tryFrom($matches['fontReference']) ?? new NameObjectStringValue($matches['fontReference']);
             return $textState->withFont(
-                DictionaryKey::tryFrom($matches['fontReference']) ?? new ExtendedDictionaryKey($matches['fontReference']),
+                $context->getFont($fontReference) ?? $parent?->getFont($fontReference),
                 (float) $matches['FontSize'],
             );
         }

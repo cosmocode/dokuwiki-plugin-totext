@@ -1,0 +1,208 @@
+<?php declare(strict_types=1);
+
+namespace PrinsFrank\PdfParser\Document\Dictionary\Decorator;
+
+use Override;
+use PrinsFrank\PdfParser\Document\ContentStream\ContentStreamParser;
+use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\GraphicsState;
+use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\PositionedTextElement;
+use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TransformationMatrix;
+use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\ArrayValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\CIEColorSpaceNameValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\DeviceColorSpaceNameValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\FilterNameValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\SpecialColorSpaceNameValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\SubtypeNameValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
+use PrinsFrank\PdfParser\Document\Image\ColorSpace\ColorSpace;
+use PrinsFrank\PdfParser\Document\Image\ColorSpace\ColorSpaceFactory;
+use PrinsFrank\PdfParser\Document\Image\ImageType;
+use PrinsFrank\PdfParser\Document\Image\RasterizedImage;
+use PrinsFrank\PdfParser\Exception\ParseFailureException;
+use PrinsFrank\PdfParser\Exception\PdfParserException;
+use PrinsFrank\PdfParser\Exception\RuntimeException;
+use PrinsFrank\PdfParser\Stream\Stream;
+
+/** @see 8.8 External objects */
+readonly class XObject extends DecoratedDictionary {
+    public function isImage(): bool {
+        return $this->getSubType() === SubtypeNameValue::IMAGE;
+    }
+
+    public function isForm(): bool {
+        return $this->getSubType() === SubtypeNameValue::FORM;
+    }
+
+    public function getWidth(): ?int {
+        return $this->getValueForKey(DictionaryKey::WIDTH, IntegerValue::class)
+            ?->value;
+    }
+
+    public function getHeight(): ?int {
+        return $this->getValueForKey(DictionaryKey::HEIGHT, IntegerValue::class)
+            ?->value;
+    }
+
+    public function getLength(): ?int {
+        return $this->getValueForKey(DictionaryKey::LENGTH, IntegerValue::class)
+            ?->value;
+    }
+
+    /** @throws PdfParserException */
+    public function getResourceDictionary(): ?Dictionary {
+        return $this->getSubDictionary(DictionaryKey::RESOURCES);
+    }
+
+    /** @throws PdfParserException */
+    public function getXObjectsDictionary(): ?Dictionary {
+        return $this->getResourceDictionary()
+            ?->getSubDictionary(DictionaryKey::XOBJECT);
+    }
+
+    /** @throws PdfParserException */
+    public function getFontDictionary(): ?Dictionary {
+        return $this->getResourceDictionary()
+            ?->getSubDictionary(DictionaryKey::FONT);
+    }
+
+    public function getImageType(): ?ImageType {
+        if (!$this->isImage()) {
+            throw new RuntimeException('Unable to retrieve image type for XObjects that is not an image');
+        }
+
+        $filterValueType = $this->getTypeForKey(DictionaryKey::FILTER);
+        if ($filterValueType === null) {
+            return null;
+        }
+
+        if ($filterValueType === FilterNameValue::class) {
+            return $this->getValueForKey(DictionaryKey::FILTER, FilterNameValue::class)?->getImageType();
+        }
+
+        if ($filterValueType === ArrayValue::class) {
+            foreach ($this->getValueForKey(DictionaryKey::FILTER, ArrayValue::class)->value ?? throw new RuntimeException() as $filterValue) {
+                if (!is_string($filterValue)) {
+                    throw new ParseFailureException(sprintf('Expected a string for filter value, got "%s"', ($jsonEncoded = json_encode($filterValue)) !== false ? $jsonEncoded : 'Unknown'));
+                }
+
+                $filterValue = FilterNameValue::tryFrom(ltrim($filterValue, '/')) ?? throw new ParseFailureException(sprintf('Unsupported filter value "%s"', $filterValue));
+                if ($filterValue->getImageType() !== null) {
+                    return $filterValue->getImageType();
+                }
+            }
+        }
+
+        throw new ParseFailureException(sprintf('Unsupported filter value type %s', $filterValueType));
+    }
+
+    private function getBitsPerComponent(): ?int {
+        return $this->getValueForKey(DictionaryKey::BITS_PER_COMPONENT, IntegerValue::class)
+            ?->value;
+    }
+
+    private function getColorSpace(): ?ColorSpace {
+        if (($type = $this->getTypeForKey(DictionaryKey::COLOR_SPACE)) === null) {
+            return null;
+        }
+
+        if ($type === DeviceColorSpaceNameValue::class || $type === CIEColorSpaceNameValue::class || $type === SpecialColorSpaceNameValue::class) {
+            return new ColorSpace(false, $this->getValueForKey(DictionaryKey::COLOR_SPACE, $type) ?? throw new ParseFailureException(), null, null, null);
+        }
+
+        if ($type === ArrayValue::class) {
+            $colorSpaceArray = $this->getValueForKey(DictionaryKey::COLOR_SPACE, ArrayValue::class)
+                ?? throw new ParseFailureException();
+
+            return ColorSpaceFactory::fromString($colorSpaceArray->toString(), $this->dictionary->object->document ?? throw new ParseFailureException());
+        }
+
+        if ($type === ReferenceValue::class) {
+            $colorSpaceObject = $this->getObjectForReference(DictionaryKey::COLOR_SPACE)
+                ?? throw new ParseFailureException('Unable to retrieve colorspace object');
+
+            return ColorSpaceFactory::fromString($colorSpaceObject->getContent()->toString(), $this->dictionary->object->document ?? throw new ParseFailureException());
+        }
+
+        throw new ParseFailureException(sprintf('Unsupported colorspace format %s', $type));
+    }
+
+    #[Override]
+    public function getContent(): Stream {
+        $content = parent::getContent();
+        if (!$this->isImage() || $this->getImageType() !== ImageType::PNG) {
+            return $content;
+        }
+
+        $height = $this->getHeight() ?? throw new RuntimeException('Unable to retrieve height');
+        if ($height < 1) {
+            throw new RuntimeException(sprintf('Height %d cannot be less than 1', $height));
+        }
+
+        $width = $this->getWidth() ?? throw new RuntimeException('Unable to retrieve width');
+        if ($width < 1) {
+            throw new RuntimeException(sprintf('Width %d cannot be less than 1', $width));
+        }
+
+        return RasterizedImage::toPNG(
+            $this->getColorSpace() ?? throw new RuntimeException('Unable to retrieve colorspace'),
+            $width,
+            $height,
+            $this->getBitsPerComponent() ?? throw new RuntimeException('Unable to retrieve bits per component'),
+            $content,
+        );
+    }
+
+    /**
+     * The matrix that maps the coordinate space of this form onto the space it is painted in, or null when the form has
+     * no /Matrix of six numbers.
+     *
+     * @throws PdfParserException
+     */
+    public function getMatrix(): ?TransformationMatrix {
+        $matrix = $this->getValueForKey(DictionaryKey::MATRIX, ArrayValue::class);
+        if ($matrix === null || count($matrix->value) !== 6) {
+            return null;
+        }
+
+        $values = [];
+        foreach ($matrix->value as $value) {
+            if (!is_int($value) && !is_string($value)) {
+                return null;
+            }
+
+            $values[] = (float) $value;
+        }
+
+        return new TransformationMatrix($values[0], $values[1], $values[2], $values[3], $values[4], $values[5]);
+    }
+
+    /**
+     * The text shown inside this Form XObject. It starts from the graphics state in effect where the form is painted
+     * (ISO 32000-1:2008 §8.10.1), with the /Matrix of the form applied on top of the matrix of that state.
+     *
+     * @param GraphicsState $state the state in effect where the form is painted
+     * @param list<int> $visitedObjectIds
+     * @return list<PositionedTextElement>
+     */
+    public function getPositionedTextElements(GraphicsState $state, ?Page $parent, array $visitedObjectIds): array {
+        if ($this->isForm() === false || $this->dictionary->object === null) {
+            return [];
+        }
+
+        $matrix = $this->getMatrix() ?? new TransformationMatrix(1, 0, 0, 1, 0, 0);
+
+        return ContentStreamParser::parse([$this->dictionary->object])
+            ->getPositionedTextElements($this, $parent, $state->withCtm($matrix->multiplyWith($state->ctm)), $visitedObjectIds);
+    }
+
+    /** @throws PdfParserException */
+    public function getFont(DictionaryKey|NameObjectStringValue $dictionaryKey): ?Font {
+        return $this->getFontDictionary()
+            ?->getObjectForReference($dictionaryKey)
+            ?->getDictionary(Font::class);
+    }
+}

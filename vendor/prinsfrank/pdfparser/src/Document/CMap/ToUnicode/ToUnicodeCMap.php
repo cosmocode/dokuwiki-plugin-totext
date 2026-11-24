@@ -5,6 +5,7 @@ namespace PrinsFrank\PdfParser\Document\CMap\ToUnicode;
 use PrinsFrank\PdfParser\Exception\InvalidArgumentException;
 use PrinsFrank\PdfParser\Exception\PdfParserException;
 
+/** @see 9.10.3 */
 class ToUnicodeCMap {
     /** @var list<BFRange|BFChar> */
     private readonly array $bfCharRangeInfo;
@@ -31,12 +32,13 @@ class ToUnicodeCMap {
     }
 
     /** @throws PdfParserException */
-    public function textToUnicode(string $characterGroup): string {
+    public function textToUnicode(string $binaryString): string {
         $unicode = '';
-        $chunkSize = $this->byteSize * 2;
-        $nrOfChunks = strlen($characterGroup) / $chunkSize;
+        $nrOfChunks = strlen($binaryString) / $this->byteSize;
         for ($i = 0; $i < $nrOfChunks; $i++) {
-            $unicode .= $this->charToUnicode((int) hexdec(substr($characterGroup, $i * $chunkSize, $chunkSize))) ?? '';
+            $binaryChunk = substr($binaryString, $i * $this->byteSize, $this->byteSize);
+            $charCode = (int) hexdec(bin2hex($binaryChunk));
+            $unicode .= $this->charToUnicode($charCode) ?? '';
         }
 
         return $unicode;

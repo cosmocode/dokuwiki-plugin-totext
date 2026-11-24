@@ -7,8 +7,8 @@ use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValu
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\CIEColorSpaceNameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\DeviceColorSpaceNameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\SpecialColorSpaceNameValue;
-use PrinsFrank\PdfParser\Document\Document;
-use PrinsFrank\PdfParser\Document\Object\Decorator\DecoratedObject;
+use PrinsFrank\PdfParser\Document\Object\CompressedObject\CompressedObject;
+use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 use PrinsFrank\PdfParser\Exception\RuntimeException;
 
@@ -18,12 +18,12 @@ readonly class ColorSpace {
     public function __construct(
         public bool $isIndexed,
         public DeviceColorSpaceNameValue|CIEColorSpaceNameValue|SpecialColorSpaceNameValue $nameValue,
-        public ?DecoratedObject $LUTObj,
+        public CompressedObject|UncompressedObject|null $LUTObj,
         public ?string $fallbackLUT,
         public ?int $maxIndexLUT,
     ) {}
 
-    public function getComponents(Document $document): Components {
+    public function getComponents(): Components {
         if (isset($this->components)) {
             return $this->components;
         }
@@ -36,7 +36,7 @@ readonly class ColorSpace {
             return $this->components = Components::tryFrom(
                 $this->LUTObj
                     ->getDictionary()
-                    ->getValueForKey($document, DictionaryKey::N, IntegerValue::class)
+                    ->getValueForKey(DictionaryKey::N, IntegerValue::class)
                     ->value ?? throw new RuntimeException('Unable to determine number of components for color space'),
             ) ?? throw new ParseFailureException('Unable to determine number of components for color space');
         }

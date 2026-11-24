@@ -3,12 +3,13 @@
 namespace PrinsFrank\PdfParser\Document\ContentStream\PositionedText;
 
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextSegment\TextSegment;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
-use PrinsFrank\PdfParser\Document\Document;
-use PrinsFrank\PdfParser\Document\Object\Decorator\Font;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Rectangle\Rectangle;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 readonly class PositionedTextElement {
+    private float $heightCache;
+    private float $textSpaceAdvanceCache;
+    private float $rightCache;
     public const WORD_BREAK_THRESHOLD_EM = 0.25;
 
     /** @param list<TextSegment> $textSegments */
@@ -18,55 +19,41 @@ readonly class PositionedTextElement {
         public TextState $textState,
     ) {}
 
-    public function getFont(Document $document): Font {
-        if ($this->textState->fontName === null) {
-            throw new ParseFailureException('Unable to locate font for text element');
-        }
-
-        $reference = $this->textState->resourceChain->resolve($document, DictionaryKey::FONT, $this->textState->fontName);
-
-        return ($reference !== null ? $document->getObject($reference->objectNumber, Font::class) : null)
-            ?? throw new ParseFailureException(sprintf('Unable to locate font with reference "/%s"', $this->textState->fontName->value));
-    }
-
     /** @throws ParseFailureException */
-    public function getText(Document $document): string {
-        $font = $this->getFont($document);
-        $differences = $font->getDifferences();
-        $encoding = $font->getEncoding();
-        $toUnicodeCMap = $font->getToUnicodeCMap() ?? $font->getToUnicodeCMapDescendantFont();
-
+    public function getText(): string {
         $text = '';
-        $previousOffset = null;
         foreach ($this->textSegments as $textSegment) {
-            $textSegmentText = $textSegment->getText($differences, $encoding, $toUnicodeCMap);
-            if ($previousOffset !== null
-                && $previousOffset / 1000 <= -self::WORD_BREAK_THRESHOLD_EM
+            $textSegmentText = $textSegment->getText($this->textState->getFontOrThrow());
+            if ($textSegment->offset !== null
+                && $textSegment->offset / 1000 <= -self::WORD_BREAK_THRESHOLD_EM
                 && str_ends_with($text, ' ') === false
                 && str_starts_with($textSegmentText, ' ') === false) {
                 $text .= ' ';
             }
 
             $text .= $textSegmentText;
-            $previousOffset = $textSegment->offset;
         }
 
         return $text;
     }
 
     /** @return list<int> */
-    public function getCodePoints(): array {
+    public function getBytes(): array {
         $codePoints = [];
         foreach ($this->textSegments as $textSegment) {
-            array_push($codePoints, ...$textSegment->getCodePoints());
+            array_push($codePoints, ...$textSegment->textString?->getBytes() ?? []);
         }
 
         return $codePoints;
     }
 
     public function getHeight(): float {
-        return $this->textState->getFontSize()
-            * hypot($this->absoluteMatrix->shearY, $this->absoluteMatrix->scaleY) // Length of the glyph's vertical axis: its extent perpendicular to the baseline
+        if (isset($this->heightCache)) {
+            return $this->heightCache;
+        }
+
+        return $this->heightCache = ($this->textState->getFontSize())
+            * hypot($this->absoluteMatrix->shearY, $this->absoluteMatrix->scaleY) // Length of the glyph's vertical axis, so rotated text keeps its height
             * ($this->textState->scale / 100);
     }
 
@@ -76,23 +63,29 @@ readonly class PositionedTextElement {
      *
      *   ((w0 − Tj/1000)·Tfs + Tc + Tw·[single-byte code 32]) · Th , transformed by the text rendering matrix.
      *
-     * Reconstructed here because Tj/TJ do not advance the text matrix in this parser. The text-space advance is
-     * horizontal; transformed by the matrix it becomes a page-space vector along the baseline. This returns that
-     * vector's signed projection onto the unit vector $direction -- a dot product, so it keeps its sign. The
-     * default direction is page X (Vector(1, 0)), giving the advance · scaleX exactly as before; pass a baseline
-     * unit vector to measure the advance along a rotated baseline.
+     * Reconstructed here because Tj/TJ do not advance the text matrix in this parser. The matrix turns the
+     * horizontal text-space advance into a page-space vector along the baseline. The result is the signed
+     * projection of that vector onto the unit vector $direction. The default direction is the page X axis.
      */
-    public function getAdvanceWidth(Document $document, Vector $direction = new Vector(1.0, 0.0)): float {
-        $font = $this->getFont($document);
-        $fontSize = $this->textState->getFontSize();
+    public function getAdvanceWidth(Vector $direction = new Vector(1.0, 0.0)): float {
+        if (isset($this->textSpaceAdvanceCache) === false) {
+            $fontSize = $this->textState->getFontSize();
 
-        $glyphAdvance = $font->getWidthForChars($this->getCodePoints(), $this->textState); // Σ (w0·Tfs + Tc + Tw·[code 32])
-        $offsetAdvance = -($this->getTotalOffset() / 1000) * $fontSize;                     // − Σ(Tj)/1000 · Tfs
+            $glyphAdvance = $this->textState->getFontOrThrow()->getWidthForBytes($this->getBytes(), $this->textState->wordSpace, $this->textState->charSpace, $fontSize); // Σ (w0·Tfs + Tc + Tw·[code 32])
+            $offsetAdvance = -($this->getTotalOffset() / 1000) * $fontSize;                                                                                         // − Σ(Tj)/1000 · Tfs
 
-        $textSpaceAdvance = ($glyphAdvance + $offsetAdvance) * ($this->textState->scale / 100); // · Th
+            $this->textSpaceAdvanceCache = ($glyphAdvance + $offsetAdvance) * ($this->textState->scale / 100); // · Th
+        }
 
-        // Project the page-space advance vector (the text-space advance along the baseline) onto $direction.
-        return $textSpaceAdvance * $this->absoluteMatrix->baselineVector()->dot($direction);
+        return $this->textSpaceAdvanceCache * $this->absoluteMatrix->baselineVector()->dot($direction);
+    }
+
+    public function getRight(): float {
+        if (isset($this->rightCache)) {
+            return $this->rightCache;
+        }
+
+        return $this->rightCache = $this->absoluteMatrix->offsetX + $this->getAdvanceWidth();
     }
 
     /** The sum of the TJ adjustment numbers in this element's segments, in thousandths of an em. */
@@ -105,5 +98,12 @@ readonly class PositionedTextElement {
         }
 
         return $totalOffset;
+    }
+
+    public function startsWithinRectangle(Rectangle $rectangle): bool {
+        return $this->absoluteMatrix->offsetX <= $rectangle->xBottomRight
+            && $this->absoluteMatrix->offsetX >= $rectangle->xTopLeft
+            && $this->absoluteMatrix->offsetY >= $rectangle->yTopLeft
+            && $this->absoluteMatrix->offsetY <= $rectangle->yBottomRight;
     }
 }

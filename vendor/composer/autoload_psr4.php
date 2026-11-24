@@ -7,5 +7,7 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'PrinsFrank\\PdfParser\\' => array($vendorDir . '/prinsfrank/pdfparser/src'),
+    'PrinsFrank\\MarkDownDom\\' => array($vendorDir . '/prinsfrank/markdown-dom/src'),
     'PrinsFrank\\GlyphLists\\' => array($vendorDir . '/prinsfrank/glyph-lists/src'),
+    'PrinsFrank\\Core14FontMetrics\\' => array($vendorDir . '/prinsfrank/core-14-font-metrics/src'),
 );

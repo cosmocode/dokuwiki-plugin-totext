@@ -3,20 +3,24 @@ declare(strict_types=1);
 
 namespace PrinsFrank\PdfParser\Document\Dictionary;
 
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\DecoratedDictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryEntry\DictionaryEntry;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\ExtendedDictionaryKey;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\ArrayValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\DictionaryArrayValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\DictionaryValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\DocumentAwareDictionaryValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\NameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\SubtypeNameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\TypeNameValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Rectangle\Rectangle;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValueArray;
-use PrinsFrank\PdfParser\Document\Document;
-use PrinsFrank\PdfParser\Document\Object\Decorator\DecoratedObject;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\NameObjectStringValue;
+use PrinsFrank\PdfParser\Document\Object\CompressedObject\CompressedObject;
+use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
 use PrinsFrank\PdfParser\Exception\InvalidArgumentException;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 use PrinsFrank\PdfParser\Exception\RuntimeException;
@@ -28,6 +32,7 @@ readonly class Dictionary {
 
     /** @no-named-arguments */
     public function __construct(
+        public CompressedObject|UncompressedObject|null $object,
         DictionaryEntry... $dictionaryEntries,
     ) {
         $this->dictionaryEntries = $dictionaryEntries;
@@ -36,56 +41,62 @@ readonly class Dictionary {
     /**
      * @template T of DictionaryValue|NameValue|Dictionary
      * @param class-string<T> $expectedValueType
-     * @return T
+     * @return T|null
      */
-    public function getValueForKey(?Document $document, DictionaryKey|ExtendedDictionaryKey $dictionaryKey, string $expectedValueType): DictionaryValue|Dictionary|NameValue|null {
+    public function getValueForKey(DictionaryKey|NameObjectStringValue $dictionaryKey, string $expectedValueType): DictionaryValue|Dictionary|NameValue|null {
         foreach ($this->dictionaryEntries as $dictionaryEntry) {
             if (($dictionaryKey instanceof DictionaryKey && $dictionaryEntry->key === $dictionaryKey) === false
-                && ($dictionaryKey instanceof ExtendedDictionaryKey && $dictionaryEntry->key instanceof ExtendedDictionaryKey && $dictionaryEntry->key->value === $dictionaryKey->value) === false) {
+                && ($dictionaryKey instanceof NameObjectStringValue && $dictionaryEntry->key instanceof NameObjectStringValue && $dictionaryEntry->key->value === $dictionaryKey->value) === false) {
                 continue;
             }
 
             $value = $dictionaryEntry->value;
             if ($value instanceof Dictionary && $expectedValueType !== Dictionary::class) {
-                $value = $value->getValueForKey($document, $dictionaryKey, $expectedValueType)
+                $value = $value->getValueForKey($dictionaryKey, $expectedValueType)
                     ?? throw new InvalidArgumentException('Value type is dictionary but subdictionary not found');
             }
 
-            if ($value instanceof ReferenceValue && $document !== null && $expectedValueType !== ReferenceValue::class) {
-                $content = ($document->getObject($value->objectNumber) ?? throw new InvalidArgumentException(sprintf('Object with nr %d not found', $value->objectNumber)))
-                    ->getStream();
+            if ($value instanceof ReferenceValue && $this->object !== null && $expectedValueType !== ReferenceValue::class) {
+                $content = ($this->object->document->getObject($value->objectNumber) ?? throw new InvalidArgumentException(sprintf('Object with nr %d not found', $value->objectNumber)))
+                    ->getContent();
                 if ($expectedValueType === Dictionary::class) {
-                    $value = DictionaryParser::parse(null, $content, 0, $content->getSizeInBytes());
+                    $value = DictionaryParser::parse($this->object, null, $content, 0, $content->getSizeInBytes());
                 } elseif (is_a($expectedValueType, NameValue::class, true)) {
-                    $value = $expectedValueType::tryFrom(trim($content->toString()))
+                    $value = $expectedValueType::tryFrom($content->toString())
+                        ?? throw new ParseFailureException(sprintf('Unable to parse content "%s" of referenced object %d as %s', $content->toString(), $value->objectNumber, $expectedValueType));
+                } elseif (is_a($expectedValueType, DocumentAwareDictionaryValue::class, true)) {
+                    $value = $expectedValueType::fromValue($content->toString(), $this->object)
                         ?? throw new ParseFailureException(sprintf('Unable to parse content "%s" of referenced object %d as %s', $content->toString(), $value->objectNumber, $expectedValueType));
                 } elseif (is_a($expectedValueType, DictionaryValue::class, true)) {
-                    $value = $expectedValueType::fromValue(trim($content->toString()))
+                    $value = $expectedValueType::fromValue($content->toString())
                         ?? throw new ParseFailureException(sprintf('Unable to parse content "%s" of referenced object %d as %s', $content->toString(), $value->objectNumber, $expectedValueType));
                 }
             }
 
-            if ($value instanceof ReferenceValueArray && $document !== null && $expectedValueType !== ReferenceValueArray::class) {
+            if ($value instanceof ReferenceValueArray && $this->object !== null && $expectedValueType !== ReferenceValueArray::class) {
                 $content = '';
                 foreach ($value->referenceValues as $referenceValue) {
-                    $content .= ($document->getObject($referenceValue->objectNumber) ?? throw new InvalidArgumentException(sprintf('Object with nr %d not found', $referenceValue->objectNumber)))
-                        ->getStream()
+                    $content .= ($this->object->document->getObject($referenceValue->objectNumber) ?? throw new InvalidArgumentException(sprintf('Object with nr %d not found', $referenceValue->objectNumber)))
+                        ->getContent()
                         ->toString();
                 }
 
                 $content = new InMemoryStream($content);
                 if ($expectedValueType === Dictionary::class) {
-                    $value = DictionaryParser::parse(null, $content, 0, $content->getSizeInBytes());
+                    $value = DictionaryParser::parse($this->object, null, $content, 0, $content->getSizeInBytes());
                 } elseif (is_a($expectedValueType, NameValue::class, true)) {
-                    $value = $expectedValueType::tryFrom(trim($content->toString()))
+                    $value = $expectedValueType::tryFrom($content->toString())
                         ?? throw new ParseFailureException(sprintf('Unable to parse content "%s" of referenced value array', $content->toString()));
                 } elseif (is_a($expectedValueType, DictionaryValue::class, true)) {
                     if (in_array($expectedValueType, [Rectangle::class, ArrayValue::class], true)) {
                         $content = new InMemoryStream('[' . $content->toString() . ']');
                     }
 
-                    $value = $expectedValueType::fromValue(trim($content->toString()))
-                        ?? throw new ParseFailureException(sprintf('Unable to parse content "%s" of referenced value array', $content->toString()));
+                    $value = (
+                        is_a($expectedValueType, DocumentAwareDictionaryValue::class, true)
+                        ? $expectedValueType::fromValue($content->toString(), $this->object)
+                        : $expectedValueType::fromValue($content->toString())
+                    ) ?? throw new ParseFailureException(sprintf('Unable to parse content "%s" of referenced value array', $content->toString()));
                 }
             }
 
@@ -99,8 +110,28 @@ readonly class Dictionary {
         return null;
     }
 
+    public function getStringValue(DictionaryKey|NameObjectStringValue $dictionaryKey): HexadecimalStringValue|LiteralStringValue|NameObjectStringValue|null {
+        if (($type = $this->getTypeForKey($dictionaryKey)) === null) {
+            return null;
+        }
+
+        if (in_array($type, [HexadecimalStringValue::class, LiteralStringValue::class, NameObjectStringValue::class], true)) {
+            return $this->getValueForKey($dictionaryKey, $type);
+        }
+
+        if ($type === ReferenceValue::class) {
+            $object = $this->getObjectForReference($dictionaryKey) ?? throw new ParseFailureException();
+
+            return HexadecimalStringValue::fromValue($object->getContent()->toString())
+                ?? LiteralStringValue::fromValue($object->getContent()->toString())
+                ?? NameObjectStringValue::fromValue($object->getContent()->toString());
+        }
+
+        return null;
+    }
+
     /** @return class-string<DictionaryValue|NameValue|Dictionary> */
-    public function getTypeForKey(DictionaryKey $dictionaryKey): ?string {
+    public function getTypeForKey(DictionaryKey|NameObjectStringValue $dictionaryKey): ?string {
         foreach ($this->dictionaryEntries as $dictionaryEntry) {
             if ($dictionaryEntry->key === $dictionaryKey) {
                 return $dictionaryEntry->value::class;
@@ -110,72 +141,122 @@ readonly class Dictionary {
         return null;
     }
 
-    public function getSubDictionary(?Document $document, DictionaryKey $dictionaryKey): ?Dictionary {
+    public function getSubDictionary(DictionaryKey $dictionaryKey): ?Dictionary {
         $subDictionaryType = $this->getTypeForKey($dictionaryKey);
         if ($subDictionaryType === null) {
             return null;
         }
 
         if ($subDictionaryType === Dictionary::class) {
-            return $this->getValueForKey($document, $dictionaryKey, Dictionary::class) ?? throw new RuntimeException();
+            return $this->getValueForKey($dictionaryKey, Dictionary::class) ?? throw new RuntimeException();
         }
 
         if ($subDictionaryType === DictionaryArrayValue::class) {
-            return ($this->getValueForKey($document, $dictionaryKey, DictionaryArrayValue::class) ?? throw new RuntimeException())->toSingleDictionary();
+            return ($this->getValueForKey($dictionaryKey, DictionaryArrayValue::class) ?? throw new RuntimeException())->toSingleDictionary($this->object);
         }
 
         if ($subDictionaryType === ReferenceValue::class) {
-            if ($document === null) {
-                throw new ParseFailureException('Document is required to get subDictionary for reference');
-            }
-
-            return ($this->getObjectForReference($document, $dictionaryKey) ?? throw new ParseFailureException())
-                ->getDictionary();
+            return ($this->getObjectForReference($dictionaryKey) ?? throw new ParseFailureException())
+                ->getDictionary()
+                ->dictionary;
         }
 
         throw new ParseFailureException(sprintf('Invalid type "%s" for subDictionary with key %s', $subDictionaryType, $dictionaryKey->name));
     }
 
     /**
-     * @template T of DecoratedObject
-     * @param class-string<T>|null $expectedDecoratorFQN
-     * @return ($expectedDecoratorFQN is null ? DecoratedObject : T)
+     * @template T of DecoratedDictionary
+     * @param class-string<T> $expectedDecorator
+     * @return list<T>
      */
-    public function getObjectForReference(Document $document, DictionaryKey|ExtendedDictionaryKey $dictionaryKey, ?string $expectedDecoratorFQN = null): ?DecoratedObject {
-        $reference = $this->getValueForKey($document, $dictionaryKey, ReferenceValue::class);
+    public function getSubDictionaries(DictionaryKey $dictionaryKey, string $expectedDecorator): array {
+        $subDictionaryType = $this->getTypeForKey($dictionaryKey);
+        if ($subDictionaryType === null
+            || ($subDictionaryType === ArrayValue::class && ($this->getValueForKey($dictionaryKey, ArrayValue::class)->value ?? []) === [])) {
+            return [];
+        }
+
+        if ($subDictionaryType === Dictionary::class) {
+            return [new $expectedDecorator($this->getValueForKey($dictionaryKey, Dictionary::class))];
+        }
+
+        if ($subDictionaryType === DictionaryArrayValue::class) {
+            return array_map(
+                static fn(Dictionary $dictionary) => new $expectedDecorator($dictionary),
+                $this->getValueForKey($dictionaryKey, DictionaryArrayValue::class)->dictionaries ?? [],
+            );
+        }
+
+        if ($subDictionaryType === ReferenceValue::class || $subDictionaryType === ReferenceValueArray::class) {
+            $dictionaries = [];
+            foreach ($this->getObjectsForReference($dictionaryKey) as $object) {
+                if (($objectDictionary = $object->getDictionary($expectedDecorator))->dictionary->dictionaryEntries !== []) {
+                    $dictionaries[] = $objectDictionary;
+                } elseif (($referenceValue = ReferenceValue::fromValue($object->getContent()->toString())) !== null) {
+                    $dictionaries[] = $this->object?->objectNumber === $referenceValue->objectNumber
+                        ? throw new ParseFailureException()
+                        : $this->object?->document?->getObject($referenceValue->objectNumber)?->getDictionary($expectedDecorator);
+                } elseif (($referenceValueArray = ReferenceValueArray::fromValue($object->getContent()->toString())) !== null) {
+                    $dictionaries = [
+                        ...$dictionaries,
+                        ...array_map(
+                            fn(ReferenceValue $referenceValue) => $this->object?->objectNumber === $referenceValue->objectNumber
+                                ? throw new ParseFailureException()
+                                : $this->object?->document?->getObject($referenceValue->objectNumber)?->getDictionary($expectedDecorator),
+                            $referenceValueArray->referenceValues,
+                        ),
+                    ];
+                }
+            }
+
+            return array_values(array_filter($dictionaries));
+        }
+
+        throw new ParseFailureException(sprintf('Invalid type "%s" for subDictionary with key %s', $subDictionaryType, $dictionaryKey->name));
+    }
+
+    public function getObjectForReference(DictionaryKey|NameObjectStringValue $dictionaryKey): CompressedObject|UncompressedObject|null {
+        $reference = $this->getValueForKey($dictionaryKey, ReferenceValue::class);
         if ($reference === null) {
             return null;
         }
 
-        return $document->getObject($reference->objectNumber, $expectedDecoratorFQN)
-            ?? throw new ParseFailureException();
+        return $this->object?->document?->getObject($reference->objectNumber);
     }
 
-    /**
-     * @template T of DecoratedObject
-     * @param class-string<T>|null $expectedDecoratorFQN
-     * @return ($expectedDecoratorFQN is null ? list<DecoratedObject> : list<T>)
-     */
-    public function getObjectsForReference(Document $document, DictionaryKey|ExtendedDictionaryKey $dictionaryKey, ?string $expectedDecoratorFQN = null): array {
-        $references = $this->getValueForKey($document, $dictionaryKey, ReferenceValueArray::class);
+    /** @return list<UncompressedObject|CompressedObject> */
+    public function getObjectsForReference(DictionaryKey|NameObjectStringValue $dictionaryKey): array {
+        if ($this->getTypeForKey($dictionaryKey) === ReferenceValue::class) {
+            return [$this->getObjectForReference($dictionaryKey) ?? throw new ParseFailureException()];
+        }
+
+        $references = $this->getValueForKey($dictionaryKey, ReferenceValueArray::class);
         if ($references === null) {
             return [];
         }
 
         $objects = [];
         foreach ($references->referenceValues as $referenceValue) {
-            $objects[] = $document->getObject($referenceValue->objectNumber, $expectedDecoratorFQN)
+            $objects[] = $this->object?->document?->getObject($referenceValue->objectNumber)
                 ?? throw new ParseFailureException();
         }
 
         return $objects;
     }
 
-    public function getType(?Document $document): ?TypeNameValue {
-        return $this->getValueForKey($document, DictionaryKey::TYPE, TypeNameValue::class);
+    public function getType(): ?TypeNameValue {
+        return $this->getValueForKey(DictionaryKey::TYPE, TypeNameValue::class);
     }
 
-    public function getSubType(?Document $document): ?SubtypeNameValue {
-        return $this->getValueForKey($document, DictionaryKey::SUBTYPE, SubtypeNameValue::class);
+    public function getSubType(): SubtypeNameValue|NameObjectStringValue|null {
+        if (($subTypeType = $this->getTypeForKey(DictionaryKey::SUBTYPE)) === NameObjectStringValue::class) {
+            return $this->getValueForKey(DictionaryKey::SUBTYPE, NameObjectStringValue::class);
+        }
+
+        if ($subTypeType === SubtypeNameValue::class || $subTypeType === Dictionary::class) {
+            return $this->getValueForKey(DictionaryKey::SUBTYPE, SubtypeNameValue::class);
+        }
+
+        return null;
     }
 }

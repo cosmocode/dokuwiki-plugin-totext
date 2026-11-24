@@ -5,20 +5,19 @@ namespace PrinsFrank\PdfParser\Document;
 
 use PrinsFrank\PdfParser\Document\CrossReference\Source\CrossReferenceSource;
 use PrinsFrank\PdfParser\Document\CrossReference\Source\Section\SubSection\Entry\CrossReferenceEntryCompressed;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Catalog;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\EncryptDictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\InformationDictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Page;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\XObject;
 use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValueArray;
 use PrinsFrank\PdfParser\Document\Generic\Character\WhitespaceCharacter;
-use PrinsFrank\PdfParser\Document\Object\Decorator\Catalog;
-use PrinsFrank\PdfParser\Document\Object\Decorator\DecoratedObject;
-use PrinsFrank\PdfParser\Document\Object\Decorator\DecoratedObjectFactory;
-use PrinsFrank\PdfParser\Document\Object\Decorator\EncryptDictionary;
-use PrinsFrank\PdfParser\Document\Object\Decorator\InformationDictionary;
-use PrinsFrank\PdfParser\Document\Object\Decorator\Page;
-use PrinsFrank\PdfParser\Document\Object\Decorator\XObject;
-use PrinsFrank\PdfParser\Document\Object\Item\UncompressedObject\UncompressedObject;
-use PrinsFrank\PdfParser\Document\Object\Item\UncompressedObject\UncompressedObjectParser;
+use PrinsFrank\PdfParser\Document\Object\CompressedObject\CompressedObject;
+use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
+use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObjectParser;
 use PrinsFrank\PdfParser\Document\Security\FileEncryptionKey;
 use PrinsFrank\PdfParser\Document\Security\StandardSecurity;
 use PrinsFrank\PdfParser\Document\Version\Version;
@@ -34,7 +33,7 @@ class Document {
     /** @var list<Page> */
     private readonly array $pages;
 
-    /** @var array<int, DecoratedObject|null> */
+    /** @var array<int, CompressedObject|UncompressedObject|null> */
     private array $objectCache = [];
     public readonly ?FileEncryptionKey $fileEncryptionKey;
 
@@ -72,7 +71,8 @@ class Document {
             return null;
         }
 
-        return $this->getObject($infoReference->objectNumber, InformationDictionary::class);
+        return $this->getObject($infoReference->objectNumber)
+            ?->getDictionary(InformationDictionary::class);
     }
 
     public function getEncryptDictionary(): ?EncryptDictionary {
@@ -81,49 +81,38 @@ class Document {
             return null;
         }
 
-        return $this->getObject($infoReference->objectNumber, EncryptDictionary::class);
+        return $this->getObject($infoReference->objectNumber)
+            ?->getDictionary(EncryptDictionary::class);
     }
 
     /** @throws PdfParserException */
     public function getCatalog(): Catalog {
         $rootReference = $this->crossReferenceSource->getReferenceForKey(DictionaryKey::ROOT)
             ?? throw new ParseFailureException('Unable to locate root for document.');
-        $catalog = $this->getObject($rootReference->objectNumber, Catalog::class)
-            ?? throw new ParseFailureException(sprintf('Document references object %d as root, but object couln\'t be located', $rootReference->objectNumber));
-        if (!$catalog instanceof Catalog) {
-            throw new RuntimeException('Catalog should be a catalog item');
-        }
 
-        return $catalog;
+        return ($this->getObject($rootReference->objectNumber) ?? throw new ParseFailureException(sprintf('Document references object %d as root, but object couln\'t be located', $rootReference->objectNumber)))
+            ->getDictionary(Catalog::class);
     }
 
     /**
-     * @template T of DecoratedObject
-     * @param class-string<T>|null $expectedDecoratorFQN
      * @throws PdfParserException
-     * @return ($expectedDecoratorFQN is null ? list<DecoratedObject> : list<T>)
+     * @return list<CompressedObject|UncompressedObject>
      */
-    public function getObjectsByDictionaryKey(Dictionary $dictionary, DictionaryKey $dictionaryKey, ?string $expectedDecoratorFQN = null): array {
+    public function getObjectsByDictionaryKey(Dictionary $dictionary, DictionaryKey $dictionaryKey): array {
         $dictionaryValueType = $dictionary->getTypeForKey($dictionaryKey);
         if ($dictionaryValueType === ReferenceValue::class) {
-            return [$this->getObject($dictionary->getValueForKey($this, $dictionaryKey, ReferenceValue::class)->objectNumber ?? throw new ParseFailureException(), $expectedDecoratorFQN) ?? throw new ParseFailureException()];
+            return [$this->getObject($dictionary->getValueForKey($dictionaryKey, ReferenceValue::class)->objectNumber ?? throw new ParseFailureException()) ?? throw new ParseFailureException()];
         } elseif ($dictionaryValueType === ReferenceValueArray::class) {
             return array_map(
-                fn(ReferenceValue $referenceValue) => $this->getObject($referenceValue->objectNumber, $expectedDecoratorFQN) ?? throw new ParseFailureException(),
-                $dictionary->getValueForKey($this, $dictionaryKey, ReferenceValueArray::class)->referenceValues ?? throw new ParseFailureException(),
+                fn(ReferenceValue $referenceValue) => $this->getObject($referenceValue->objectNumber) ?? throw new ParseFailureException(),
+                $dictionary->getValueForKey($dictionaryKey, ReferenceValueArray::class)->referenceValues ?? throw new ParseFailureException(),
             );
         }
 
         throw new ParseFailureException(sprintf('Dictionary value with key "%s" is of type "%s", expected referencevalue(array)', $dictionaryKey->name, $dictionaryValueType ?? 'null'));
     }
 
-    /**
-     * @template T of DecoratedObject
-     * @param class-string<T>|null $expectedDecoratorFQN
-     * @throws PdfParserException
-     * @return ($expectedDecoratorFQN is null ? DecoratedObject : T)
-     */
-    public function getObject(int $objectNumber, ?string $expectedDecoratorFQN = null): ?DecoratedObject {
+    public function getObject(int $objectNumber): CompressedObject|UncompressedObject|null {
         if (array_key_exists($objectNumber, $this->objectCache)) {
             return $this->objectCache[$objectNumber];
         }
@@ -134,19 +123,28 @@ class Document {
         }
 
         if ($crossReferenceEntry instanceof CrossReferenceEntryCompressed) {
-            $parentObject = $this->getObject($crossReferenceEntry->storedInStreamWithObjectNumber)
-                ?? throw new RuntimeException(sprintf('Parent object for %d with number %d doesn\'t exist', $objectNumber, $crossReferenceEntry->storedInStreamWithObjectNumber));
-
-            if (!$parentObject->objectItem instanceof UncompressedObject) {
-                throw new RuntimeException('Parents for stream items shouldn\'t be stream items themselves');
+            if ($crossReferenceEntry->storedInStreamWithObjectNumber === $objectNumber) {
+                throw new ParseFailureException('Invalid crossReference entry, an object cannot contain itself');
             }
 
-            $objectItem = $parentObject->objectItem->getCompressedObject($objectNumber, $this);
+            $parentCrossReferenceEntry = $this->crossReferenceSource->getCrossReferenceEntry($crossReferenceEntry->storedInStreamWithObjectNumber, $this)
+                ?? throw new RuntimeException(sprintf('Parent object for %d with number %d doesn\'t exist', $objectNumber, $crossReferenceEntry->storedInStreamWithObjectNumber));
+            if ($parentCrossReferenceEntry instanceof CrossReferenceEntryCompressed) {
+                throw new ParseFailureException(sprintf('Invalid cross reference entry for object %d, compressed object parent must be an uncompressed object stream', $objectNumber));
+            }
+
+            $parentObject = $this->objectCache[$crossReferenceEntry->storedInStreamWithObjectNumber]
+                ??= UncompressedObjectParser::parseObject($parentCrossReferenceEntry, $crossReferenceEntry->storedInStreamWithObjectNumber, $this);
+            if (!$parentObject instanceof UncompressedObject) {
+                throw new ParseFailureException('Resolved parent object for compressed object stream must be an uncompressed object stream');
+            }
+
+            $objectItem = $parentObject->getCompressedObject($objectNumber);
         } else {
             $objectItem = UncompressedObjectParser::parseObject($crossReferenceEntry, $objectNumber, $this);
         }
 
-        return $this->objectCache[$objectNumber] = DecoratedObjectFactory::forItem($objectItem, $this, $expectedDecoratorFQN);
+        return $this->objectCache[$objectNumber] = $objectItem;
     }
 
     /** @throws PdfParserException */
@@ -181,6 +179,23 @@ class Document {
             }
 
             $text .= $page->getText();
+        }
+
+        return $text;
+    }
+
+    /**
+     * @param ?string $pageSeparator an optional string to put between text of different pages
+     * @throws PdfParserException
+     */
+    public function getMarkdown(?string $pageSeparator = null): string {
+        $text = '';
+        foreach ($this->getPages() as $i => $page) {
+            if ($i !== 0) {
+                $text .= $pageSeparator !== null ? $pageSeparator : str_repeat(WhitespaceCharacter::LINE_FEED->value, 2);
+            }
+
+            $text .= $page->getMarkdown();
         }
 
         return $text;
