@@ -19,6 +19,12 @@ use XMLReader;
  */
 abstract class AbstractZipXmlExtractor implements ExtractorInterface
 {
+    /** maximum total size in bytes of all files unpacked from one archive */
+    protected const MAX_EXTRACTION_SIZE = 100 * 1024 * 1024;
+
+    /** maximum number of files and directories unpacked from one archive */
+    protected const MAX_EXTRACTION_FILES = 10000;
+
     /** @var string path to the temp dir the archive was extracted into */
     protected string $tempDir = '';
 
@@ -66,6 +72,11 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
             // cannot be unpacked, nothing is recoverable and we throw.
             try {
                 $zip = new Zip();
+                // older php-archive versions bundled with DokuWiki have no extraction limits
+                if (method_exists($zip, 'setExtractionSizeLimit')) {
+                    $zip->setExtractionSizeLimit(static::MAX_EXTRACTION_SIZE);
+                    $zip->setExtractionFileLimit(static::MAX_EXTRACTION_FILES);
+                }
                 $zip->open($path);
                 $zip->extract($this->tempDir);
                 $zip->close();
