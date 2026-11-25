@@ -115,8 +115,9 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
      */
     protected function readPart(string $internalPath): ?string
     {
-        $full = $this->tempDir . '/' . ltrim($internalPath, '/');
-        if (!is_file($full)) {
+        $base = fullpath($this->tempDir) . '/';
+        $full = fullpath($base . $internalPath);
+        if (!str_starts_with($full, $base) || !is_file($full)) {
             return null;
         }
         $data = file_get_contents($full);

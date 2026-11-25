@@ -56,4 +56,16 @@ class PptxExtractorTest extends DokuWikiTest
         $text = (new PptxExtractor())->extract($broken)->text;
         $this->assertStringContainsString('Rajiv', $text);
     }
+
+    public function testResolvesAbsoluteSlideTarget()
+    {
+        $pptx = Samples::withChangedPart(
+            'tika-sample.pptx',
+            'ppt/_rels/presentation.xml.rels',
+            fn($xml) => str_replace('Target="slides/', 'Target="/ppt/slides/', $xml),
+        );
+        $full = (new PptxExtractor())->extract(Samples::path('tika-sample.pptx'))->text;
+        $text = (new PptxExtractor())->extract($pptx)->text;
+        $this->assertSame($full, $text);
+    }
 }

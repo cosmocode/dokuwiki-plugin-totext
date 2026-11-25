@@ -66,7 +66,9 @@ class XlsxExtractor extends AbstractOoxmlExtractor
                 if ($target === null) {
                     continue;
                 }
-                $sheets[] = ['name' => $sheet['name'], 'path' => 'xl/' . ltrim($target, '/')];
+                // absolute targets start at the package root, relative ones at the workbook
+                $path = str_starts_with($target, '/') ? $target : 'xl/' . $target;
+                $sheets[] = ['name' => $sheet['name'], 'path' => $path];
             }
             if ($sheets !== []) {
                 return $sheets;

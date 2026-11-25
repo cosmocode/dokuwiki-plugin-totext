@@ -57,4 +57,32 @@ class XlsxExtractorTest extends DokuWikiTest
         $this->assertStringContainsString('=== Sheet: Sheet1 ===', $text);
         $this->assertStringContainsString('Number', $text);
     }
+
+    public function testResolvesAbsoluteSheetTarget()
+    {
+        $xlsx = Samples::withChangedPart(
+            'tika-sample.xlsx',
+            'xl/_rels/workbook.xml.rels',
+            fn($xml) => str_replace('Target="worksheets/', 'Target="/xl/worksheets/', $xml),
+        );
+        $text = (new XlsxExtractor())->extract($xlsx)->text;
+        $this->assertStringContainsString("Number\tSquare", $text);
+    }
+
+    public function testIgnoresSheetTargetOutsideArchive()
+    {
+        global $conf;
+        // the extraction temp dir is a direct child of the DokuWiki temp dir
+        $outside = $conf['tmpdir'] . '/totext-outside.xml';
+        file_put_contents($outside, '<x><row><c><v>OUTSIDE</v></c></row></x>');
+        $xlsx = Samples::withChangedPart(
+            'tika-sample.xlsx',
+            'xl/_rels/workbook.xml.rels',
+            fn($xml) => str_replace('Target="worksheets/sheet1.xml"', 'Target="../../totext-outside.xml"', $xml),
+        );
+        $text = (new XlsxExtractor())->extract($xlsx)->text;
+        unlink($outside);
+        $this->assertStringNotContainsString('OUTSIDE', $text);
+        $this->assertStringContainsString('=== Sheet: Feuil2 ===', $text);
+    }
 }
