@@ -26,6 +26,9 @@ class PptxExtractor extends AbstractOoxmlExtractor
 
         $out = [];
         foreach ($slidePaths as $i => $slidePath) {
+            if ($this->textBudget <= 0) {
+                break;
+            }
             $xml = $this->readPart($slidePath);
             if ($xml === null) {
                 continue;
@@ -91,7 +94,9 @@ class PptxExtractor extends AbstractOoxmlExtractor
                 if ($reader->nodeType === XMLReader::ELEMENT && $reader->localName === 'sldId') {
                     $rid = $reader->getAttributeNs('id', self::RELS_NS);
                     if ($rid !== null && isset($rels[$rid])) {
-                        $order[] = 'ppt/' . ltrim($rels[$rid], '/');
+                        // absolute targets start at the package root, relative ones at the presentation
+                        $target = $rels[$rid];
+                        $order[] = str_starts_with($target, '/') ? $target : 'ppt/' . $target;
                     }
                 }
             }

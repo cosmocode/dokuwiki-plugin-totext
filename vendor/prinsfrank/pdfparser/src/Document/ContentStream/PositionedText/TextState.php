@@ -2,33 +2,24 @@
 
 namespace PrinsFrank\PdfParser\Document\ContentStream\PositionedText;
 
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\ExtendedDictionaryKey;
-use PrinsFrank\PdfParser\Document\Dictionary\ResourceDictionaryChain;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Font;
+use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 readonly class TextState {
-    /** @var float Assumed font size (Tfs) when a content stream shows text without ever setting one; the PDF spec defines no default. */
-    private const DEFAULT_FONT_SIZE = 10.0;
-
     public function __construct(
-        public DictionaryKey|ExtendedDictionaryKey|null $fontName, // Tf
-        public ?float $fontSize, // Tfs
-        public float $charSpace = 0,      // Tc
-        public float $wordSpace = 0,      // Tw
-        public float $scale = 100,        // Th
-        public float $leading = 0,        // Tl
-        public int $render = 0,           // Tmode
-        public float $rise = 0,           // Trise
-        public ResourceDictionaryChain $resourceChain = new ResourceDictionaryChain([]),
+        public ?Font $font,      // Tf
+        public ?float $fontSize,     // Tfs
+        public float $charSpace = 0, // Tc
+        public float $wordSpace = 0, // Tw
+        public float $scale = 100,   // Th
+        public float $leading = 0,   // Tl
+        public int $render = 0,      // Tmode
+        public float $rise = 0,      // Trise
     ) {}
 
-    public function getFontSize(): float {
-        return $this->fontSize ?? self::DEFAULT_FONT_SIZE;
-    }
-
-    public function withFont(DictionaryKey|ExtendedDictionaryKey|null $fontName, ?float $fontSize): self {
+    public function withFont(?Font $font, ?float $fontSize): self {
         return new TextState(
-            $fontName,
+            $font,
             $fontSize,
             $this->charSpace,
             $this->wordSpace,
@@ -36,13 +27,12 @@ readonly class TextState {
             $this->leading,
             $this->render,
             $this->rise,
-            $this->resourceChain,
         );
     }
 
     public function withCharSpace(float $charSpace): self {
         return new TextState(
-            $this->fontName,
+            $this->font,
             $this->fontSize,
             $charSpace,
             $this->wordSpace,
@@ -50,13 +40,12 @@ readonly class TextState {
             $this->leading,
             $this->render,
             $this->rise,
-            $this->resourceChain,
         );
     }
 
     public function withWordSpace(float $wordSpace): self {
         return new TextState(
-            $this->fontName,
+            $this->font,
             $this->fontSize,
             $this->charSpace,
             $wordSpace,
@@ -64,13 +53,12 @@ readonly class TextState {
             $this->leading,
             $this->render,
             $this->rise,
-            $this->resourceChain,
         );
     }
 
     public function withScale(float $scale): self {
         return new TextState(
-            $this->fontName,
+            $this->font,
             $this->fontSize,
             $this->charSpace,
             $this->wordSpace,
@@ -78,13 +66,12 @@ readonly class TextState {
             $this->leading,
             $this->render,
             $this->rise,
-            $this->resourceChain,
         );
     }
 
     public function withLeading(float $leading): self {
         return new TextState(
-            $this->fontName,
+            $this->font,
             $this->fontSize,
             $this->charSpace,
             $this->wordSpace,
@@ -92,13 +79,12 @@ readonly class TextState {
             $leading,
             $this->render,
             $this->rise,
-            $this->resourceChain,
         );
     }
 
     public function withRender(int $render): self {
         return new TextState(
-            $this->fontName,
+            $this->font,
             $this->fontSize,
             $this->charSpace,
             $this->wordSpace,
@@ -106,13 +92,12 @@ readonly class TextState {
             $this->leading,
             $render,
             $this->rise,
-            $this->resourceChain,
         );
     }
 
     public function withRise(float $rise): self {
         return new TextState(
-            $this->fontName,
+            $this->font,
             $this->fontSize,
             $this->charSpace,
             $this->wordSpace,
@@ -120,21 +105,15 @@ readonly class TextState {
             $this->leading,
             $this->render,
             $rise,
-            $this->resourceChain,
         );
     }
 
-    public function withResourceChain(ResourceDictionaryChain $resourceChain): self {
-        return new TextState(
-            $this->fontName,
-            $this->fontSize,
-            $this->charSpace,
-            $this->wordSpace,
-            $this->scale,
-            $this->leading,
-            $this->render,
-            $this->rise,
-            $resourceChain,
-        );
+    public function getFontOrThrow(): Font {
+        return $this->font
+            ?? throw new ParseFailureException();
+    }
+
+    public function getFontSize(): float {
+        return $this->fontSize ?? 10.0;
     }
 }

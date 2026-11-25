@@ -61,9 +61,14 @@ It exposes two entry points:
   empty values, accumulating multi-value keys). The unpack temp dir is created in
   DokuWiki's own temp dir (`$conf['tmpdir']`) via core's `io_mktmpdir()` and
   removed with core's `io_rmdir($dir, true)` — never the system temp dir.
-  `extract()` removes it promptly in a `finally` block; the class `__destruct()`
-  repeats the cleanup as a safety net so the dir is gone even if the process
-  dies (e.g. a fatal error) before `finally` runs.
+  `extract()` removes it promptly in a `finally` block. A fatal error skips
+  `finally`, so `makeTempDir()` also lists the dir for a shutdown function that
+  removes it.
+  The unzip is limited to `MAX_EXTRACTION_SIZE` bytes and `MAX_EXTRACTION_FILES`
+  entries, so a ZIP bomb fails the open gate instead of filling the temp dir.
+  php-archive has these limits only since 1.6.0, so `extract()` sets them only
+  when `Zip::setExtractionSizeLimit()` exists; older DokuWiki releases unzip
+  without limits.
 - `Extractor/AbstractOoxmlExtractor.php` / `Extractor/AbstractOdfExtractor.php` —
   intermediary classes between the ZIP base and the concrete extractors. They
   exist solely to declare each family's metadata source **once**: OOXML reads

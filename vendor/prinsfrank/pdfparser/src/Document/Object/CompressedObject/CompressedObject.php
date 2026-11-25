@@ -1,0 +1,113 @@
+<?php declare(strict_types=1);
+
+namespace PrinsFrank\PdfParser\Document\Object\CompressedObject;
+
+use Override;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\DecoratedDictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\GenericDictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\Dictionary;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryParser;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Reference\ReferenceValueArray;
+use PrinsFrank\PdfParser\Document\Document;
+use PrinsFrank\PdfParser\Document\Object\ObjectItem;
+use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
+use PrinsFrank\PdfParser\Exception\InvalidArgumentException;
+use PrinsFrank\PdfParser\Exception\ParseFailureException;
+use PrinsFrank\PdfParser\Exception\PdfParserException;
+use PrinsFrank\PdfParser\Exception\RuntimeException;
+use PrinsFrank\PdfParser\Stream\InMemoryStream;
+use PrinsFrank\PdfParser\Stream\Stream;
+
+/** @api */
+class CompressedObject implements ObjectItem {
+    /** @var array<class-string<DecoratedDictionary>, DecoratedDictionary> */
+    private array $decoratorCache = [];
+    private readonly Dictionary $dictionary;
+
+    public function __construct(
+        public readonly Document $document,
+        public readonly int $objectNumber,
+        public readonly UncompressedObject $storedInObject,
+        public readonly int $startByteOffsetInDecodedStream,
+        public readonly ?int $endByteOffsetInDecodedStream,
+    ) {
+        if ($this->endByteOffsetInDecodedStream !== null && $this->startByteOffsetInDecodedStream > $this->endByteOffsetInDecodedStream) {
+            throw new InvalidArgumentException(sprintf('Start offset %d should be before end offset %d', $this->startByteOffsetInDecodedStream, $this->endByteOffsetInDecodedStream));
+        }
+    }
+
+    /**
+     * @template T of DecoratedDictionary
+     * @param class-string<T> $decoratorFQN
+     * @throws PdfParserException
+     * @return T
+     */
+    #[Override]
+    public function getDictionary(string $decoratorFQN = GenericDictionary::class): DecoratedDictionary {
+        if (isset($this->decoratorCache[$decoratorFQN])) {
+            /** @var T $decoratedDictionary */
+            $decoratedDictionary = $this->decoratorCache[$decoratorFQN];
+
+            return $decoratedDictionary;
+        }
+
+        if (isset($this->dictionary)) {
+            return $this->decoratorCache[$decoratorFQN] = new $decoratorFQN($this->dictionary);
+        }
+
+        $content = $this->getContent();
+        $contentLength = $content->getSizeInBytes();
+        $firstNonWhitespaceCharOffset = null;
+        for ($offset = 0; $offset < $contentLength; $offset++) {
+            $char = $content->read($offset, 1);
+            if (in_array($char, ["\0", "\t", "\n", "\r", "\f", ' '], true) === false) {
+                $firstNonWhitespaceCharOffset = $offset;
+                break;
+            }
+        }
+
+        if ($firstNonWhitespaceCharOffset === null
+            || $content->read($firstNonWhitespaceCharOffset, 2) !== '<<') {
+            return $this->decoratorCache[$decoratorFQN] = new $decoratorFQN($this->dictionary = new Dictionary($this));
+        }
+
+        return $this->decoratorCache[$decoratorFQN] = new $decoratorFQN(
+            $this->dictionary = DictionaryParser::parse(
+                $this,
+                $this->storedInObject->getEncryptionContext(),
+                $content,
+                $firstNonWhitespaceCharOffset,
+                $content->getSizeInBytes() - $firstNonWhitespaceCharOffset,
+            ),
+        );
+    }
+
+    #[Override]
+    public function getContent(): Stream {
+        $first = $this->storedInObject->getDictionary()->getValueForKey(DictionaryKey::FIRST, IntegerValue::class)
+            ?? throw new RuntimeException('Expected a dictionary entry for "First", none found');
+
+        $content = substr(
+            $this->storedInObject->getContent()->toString(),
+            $first->value + $this->startByteOffsetInDecodedStream,
+            $this->endByteOffsetInDecodedStream !== null ? $this->endByteOffsetInDecodedStream - $this->startByteOffsetInDecodedStream : null,
+        );
+
+        if (str_starts_with($content, '[') && str_ends_with($content, ']') && ($referenceValueArray = ReferenceValueArray::fromValue($content)) !== null) {
+            $content = implode(
+                '',
+                array_map(
+                    fn(ReferenceValue $referenceValue) => ($this->document->getObject($referenceValue->objectNumber) ?? throw new ParseFailureException())
+                        ->getContent()
+                        ->toString(),
+                    $referenceValueArray->referenceValues,
+                ),
+            );
+        }
+
+        return new InMemoryStream($content);
+    }
+}

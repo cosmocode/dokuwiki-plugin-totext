@@ -15,7 +15,7 @@ use splitbrain\PHPArchive\Zip;
  * container structures. The samples are real documents taken verbatim from the
  * Apache Tika test corpus (see data/README.md for provenance). For error-path
  * tests it derives broken inputs from those real files — a genuine container
- * with one part removed, or plain non-archive bytes.
+ * with one part removed or changed, or plain non-archive bytes.
  */
 class Samples
 {
@@ -55,21 +55,30 @@ class Samples
         $unzip->extract($work, '', '/^' . preg_quote($part, '/') . '$/');
 
         $dest = $tmp . '/' . $sample;
-        $rezip = new Zip();
-        $rezip->create($dest);
-        $base = $work . '/';
-        $it = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($work, FilesystemIterator::SKIP_DOTS),
-        );
-        foreach ($it as $file) {
-            if (!$file->isFile()) {
-                continue;
-            }
-            $rel = str_replace('\\', '/', substr($file->getPathname(), strlen($base)));
-            $rezip->addFile($file->getPathname(), $rel);
-        }
-        $rezip->close();
+        self::pack($work, $dest);
+        return $dest;
+    }
 
+    /**
+     * Build a copy of a committed sample with the content of one ZIP member changed.
+     *
+     * @param string $sample committed sample file name (a ZIP container)
+     * @param string $part internal path of the member to change
+     * @param callable $change receives the member content and returns the new content
+     * @return string path to the derived copy (in a fresh temp dir)
+     */
+    public static function withChangedPart(string $sample, string $part, callable $change): string
+    {
+        $tmp = io_mktmpdir();
+        $work = $tmp . '/unpacked';
+
+        $unzip = new Zip();
+        $unzip->open(self::path($sample));
+        $unzip->extract($work);
+        file_put_contents("$work/$part", $change(file_get_contents("$work/$part")));
+
+        $dest = $tmp . '/' . $sample;
+        self::pack($work, $dest);
         return $dest;
     }
 
@@ -85,5 +94,30 @@ class Samples
         $path = io_mktmpdir() . '/corrupt.' . $ext;
         file_put_contents($path, 'this is not a valid office container');
         return $path;
+    }
+
+    /**
+     * Pack all files of a directory into a new ZIP archive.
+     *
+     * @param string $dir directory whose content becomes the archive root
+     * @param string $dest path of the archive to create
+     * @return void
+     */
+    protected static function pack(string $dir, string $dest): void
+    {
+        $zip = new Zip();
+        $zip->create($dest);
+        $base = $dir . '/';
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($it as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+            $rel = str_replace('\\', '/', substr($file->getPathname(), strlen($base)));
+            $zip->addFile($file->getPathname(), $rel);
+        }
+        $zip->close();
     }
 }

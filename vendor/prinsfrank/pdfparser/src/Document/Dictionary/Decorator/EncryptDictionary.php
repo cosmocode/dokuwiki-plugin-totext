@@ -1,0 +1,94 @@
+<?php declare(strict_types=1);
+
+namespace PrinsFrank\PdfParser\Document\Dictionary\Decorator;
+
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Boolean\BooleanValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Integer\IntegerValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\SecurityHandlerNameValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
+use PrinsFrank\PdfParser\Document\Security\SecurityAlgorithm;
+use PrinsFrank\PdfParser\Document\Security\StandardSecurityHandlerRevision;
+use PrinsFrank\PdfParser\Exception\ParseFailureException;
+use PrinsFrank\PdfParser\Exception\RuntimeException;
+
+/** @see 7.6.2 Application of encryption */
+readonly class EncryptDictionary extends DecoratedDictionary {
+    public function getSecurityHandler(): ?SecurityHandlerNameValue {
+        $filterType = $this->getTypeForKey(DictionaryKey::FILTER);
+        if ($filterType === null) {
+            return null;
+        }
+
+        if ($filterType !== SecurityHandlerNameValue::class) {
+            throw new RuntimeException('Unable to retrieve security handler for non-security handler dictionaries');
+        }
+
+        return $this->getValueForKey(DictionaryKey::FILTER, SecurityHandlerNameValue::class);
+    }
+
+    public function getLengthFileEncryptionKeyInBits(): ?int {
+        return $this->getValueForKey(DictionaryKey::LENGTH, IntegerValue::class)
+            ?->value;
+    }
+
+    public function getOwnerPasswordEntry(): string {
+        $userPasswordEntryType = $this->getTypeForKey(DictionaryKey::O);
+        if ($userPasswordEntryType !== LiteralStringValue::class
+            && $userPasswordEntryType !== HexadecimalStringValue::class) {
+            throw new ParseFailureException();
+        }
+
+        $binaryString = $this->getValueForKey(DictionaryKey::O, $userPasswordEntryType)
+            ?->getBinaryString()
+            ?? throw new ParseFailureException();
+
+        $binaryString = str_pad($binaryString, 32, "\x00");
+        if ($this->getStandardSecurityHandlerRevision()->value <= 4) {
+            return substr($binaryString, 0, 32);
+        }
+
+        return $binaryString;
+    }
+
+    public function getUserPasswordEntry(): string {
+        $userPasswordEntryType = $this->getTypeForKey(DictionaryKey::U);
+        if ($userPasswordEntryType !== LiteralStringValue::class
+            && $userPasswordEntryType !== HexadecimalStringValue::class) {
+            throw new ParseFailureException();
+        }
+
+        $binaryString = $this->getValueForKey(DictionaryKey::U, $userPasswordEntryType)
+            ?->getBinaryString()
+            ?? throw new ParseFailureException();
+
+        $binaryString = str_pad($binaryString, 32, "\x00");
+        if ($this->getStandardSecurityHandlerRevision()->value <= 4) {
+            return substr($binaryString, 0, 32);
+        }
+
+        return $binaryString;
+    }
+
+    public function getPValue(): int {
+        return $this->getValueForKey(DictionaryKey::P, IntegerValue::class)
+            ->value
+            ?? throw new ParseFailureException('Unable to retrieve p value');
+    }
+
+    public function getSecurityAlgorithm(): ?SecurityAlgorithm {
+        return $this->getValueForKey(DictionaryKey::V, SecurityAlgorithm::class);
+    }
+
+    public function getStandardSecurityHandlerRevision(): StandardSecurityHandlerRevision {
+        return $this->getValueForKey(DictionaryKey::R, StandardSecurityHandlerRevision::class)
+            ?? throw new ParseFailureException('Unable to retrieve standard security handler revision');
+    }
+
+    public function isMetadataEncrypted(): bool {
+        $encryptMetadata = $this->getValueForKey(DictionaryKey::ENCRYPT_METADATA, BooleanValue::class);
+
+        return $encryptMetadata === null || $encryptMetadata->value; // If key is not present, assume encrypted metadata
+    }
+}

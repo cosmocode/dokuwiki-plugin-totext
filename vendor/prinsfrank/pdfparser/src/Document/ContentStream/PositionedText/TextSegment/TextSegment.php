@@ -3,31 +3,33 @@
 namespace PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextSegment;
 
 use PrinsFrank\PdfParser\Document\CMap\ToUnicode\ToUnicodeCMap;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Array\DifferencesArrayValue;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Font;
 use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name\EncodingNameValue;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\TextStringValue;
-use PrinsFrank\PdfParser\Exception\ParseFailureException;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
 
 readonly class TextSegment {
     public function __construct(
-        public TextStringValue $textString,
         public int|float|null $offset,
+        public HexadecimalStringValue|LiteralStringValue|null $textString,
     ) {}
 
-    public function getText(?DifferencesArrayValue $differences, ?EncodingNameValue $encoding, ?ToUnicodeCMap $toUnicodeCMap): string {
-        $binaryString = $this->textString->getBinaryString();
-        if ($differences === null) {
-            return $this->decode($binaryString, $encoding, $toUnicodeCMap);
+    public function getText(Font $font): string {
+        if ($this->textString === null) {
+            return '';
         }
 
-        // A /Differences array applies to simple (single byte encoded) fonts, so each byte is mapped
-        // individually, falling back to the base encoding for codes the array does not remap (spec §9.6.6.1).
+        $binaryString = $this->textString->getBinaryString();
+        if (($differences = $font->getDifferences()) === null) {
+            return $this->decode($binaryString, $font->getEncoding(), $font->getToUnicodeCMap());
+        }
+
         $text = '';
         for ($index = 0, $length = strlen($binaryString); $index < $length; $index++) {
             $glyph = $differences->getGlyph(ord($binaryString[$index]));
             $text .= $glyph !== null
-                ? $glyph->getChar()
-                : $this->decode($binaryString[$index], $encoding, $toUnicodeCMap);
+                ? $glyph
+                : $this->decode($binaryString[$index], $font->getEncoding(), $font->getToUnicodeCMap());
         }
 
         return $text;
@@ -39,31 +41,13 @@ readonly class TextSegment {
         }
 
         if ($toUnicodeCMap !== null) {
-            return $toUnicodeCMap->textToUnicode(bin2hex($binaryString));
+            return $toUnicodeCMap->textToUnicode($binaryString);
         }
 
-        if ($encoding !== null) {
+        if ($encoding !== null && !in_array($encoding, [EncodingNameValue::IdentityH, EncodingNameValue::IdentityV], true)) {
             return $encoding->decodeString($binaryString);
         }
 
         return $binaryString;
-    }
-
-    /** @return list<int> */
-    public function getCodePoints(): array {
-        $codePoints = [];
-        if (str_starts_with($this->textString->textStringValue, '(') && str_ends_with($this->textString->textStringValue, ')')) {
-            foreach (str_split($this->textString->getBinaryString()) as $char) {
-                $codePoints[] = ord($char);
-            }
-        } elseif (str_starts_with($this->textString->textStringValue, '<') && str_ends_with($this->textString->textStringValue, '>')) {
-            foreach (str_split(substr($this->textString->textStringValue, 1, -1), 4) as $char) {
-                $codePoints[] = is_int($codePoint = hexdec($char)) ? $codePoint : throw new ParseFailureException();
-            }
-        } else {
-            throw new ParseFailureException(sprintf('Unrecognized character group format "%s"', $this->textString->textStringValue));
-        }
-
-        return $codePoints;
     }
 }

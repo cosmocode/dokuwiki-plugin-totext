@@ -10,7 +10,9 @@ class ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed
         'P' =>
         array (
             'PrinsFrank\\PdfParser\\' => 21,
+            'PrinsFrank\\MarkDownDom\\' => 23,
             'PrinsFrank\\GlyphLists\\' => 22,
+            'PrinsFrank\\Core14FontMetrics\\' => 29,
         ),
     );
 
@@ -19,9 +21,17 @@ class ComposerStaticInit4a5d3012c859d6e0ac11acc00049baed
         array (
             0 => __DIR__ . '/..' . '/prinsfrank/pdfparser/src',
         ),
+        'PrinsFrank\\MarkDownDom\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/prinsfrank/markdown-dom/src',
+        ),
         'PrinsFrank\\GlyphLists\\' =>
         array (
             0 => __DIR__ . '/..' . '/prinsfrank/glyph-lists/src',
+        ),
+        'PrinsFrank\\Core14FontMetrics\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/prinsfrank/core-14-font-metrics/src',
         ),
     );
 

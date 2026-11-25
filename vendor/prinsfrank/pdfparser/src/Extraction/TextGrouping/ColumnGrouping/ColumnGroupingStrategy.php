@@ -1,0 +1,173 @@
+<?php declare(strict_types=1);
+
+namespace PrinsFrank\PdfParser\Extraction\TextGrouping\ColumnGrouping;
+
+use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\PositionedTextElement;
+use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\Vector;
+use PrinsFrank\PdfParser\Exception\ParseFailureException;
+use PrinsFrank\PdfParser\Extraction\TextGrouping\BaselineFrame;
+use PrinsFrank\PdfParser\Extraction\TextGrouping\LineGrouping\TextOverlapStrategy;
+use ValueError;
+
+/**
+ * Take all the left and right offsets of all positioned text elements. Exclude the leftmost and rightmost as we know
+ * there is a "gutter" there. Round them down for left, up for right, and divide by the minimum gutter width to reduce
+ * the number of gutter candidates.
+ *
+ * Iterate over all gutter candidates. Check how many horizontal text lines contain elements that cross the gutter.
+ * Keep track of the longest streak of misses per gutter, and on what line index that streak starts. If there is no
+ * candidate with a streak of more than the minimum number of lines, return early. Prune consecutive gutter candidates
+ * that live in the same gutter. Exit when any of the columns is less than the minimum column width percentage.
+ *
+ * Reduce the gutter candidates to only those within 2 of the highest line count. Take the last line number of the
+ * header, and the first line of the footer if either exists. Group the elements in between those by column, then return
+ * the header, column(1)...column(n), footer as groups.
+ */
+class ColumnGroupingStrategy {
+    private const MINIMUM_GUTTER_WIDTH = 10;
+    private const MINIMUM_COLUMN_WIDTH_PERCENTAGE = 20;
+    private const NR_OF_LINES_TO_BE_CONSIDERED_COLUMNS = 25;
+
+    /**
+     * @param list<PositionedTextElement> $positionedTextElements
+     * @param BaselineFrame $frame the axes to measure in; gutters run across its baseline
+     * @return list<list<PositionedTextElement>>
+     */
+    public static function group(array $positionedTextElements, BaselineFrame $frame = new BaselineFrame(new Vector(1.0, 0.0))): array {
+        $visibleElements = array_filter(
+            $positionedTextElements,
+            static fn(PositionedTextElement $e) => $e->getHeight() > 0 && $frame->end($e) > $frame->along($e),
+        );
+
+        if ($visibleElements === []) {
+            return [];
+        }
+
+        $positionedElementsGroupedByLine = iterator_to_array(TextOverlapStrategy::group($positionedTextElements, $frame), false);
+        $nrOfLines = count($positionedElementsGroupedByLine);
+        if ($nrOfLines < self::NR_OF_LINES_TO_BE_CONSIDERED_COLUMNS) {
+            return $positionedElementsGroupedByLine;
+        }
+
+        $pageLeft = min(
+            $elementsLeft = array_map(
+                static fn(PositionedTextElement $e) => floor($frame->along($e) / self::MINIMUM_GUTTER_WIDTH) * self::MINIMUM_GUTTER_WIDTH,
+                $visibleElements,
+            ),
+        );
+        $pageRight = max(
+            $elementsRight = array_map(
+                static fn(PositionedTextElement $e) => ceil($frame->end($e) / self::MINIMUM_GUTTER_WIDTH) * self::MINIMUM_GUTTER_WIDTH,
+                $visibleElements,
+            ),
+        );
+        $pageWidth = $pageRight - $pageLeft;
+        $xCandidates = array_filter(
+            array_unique([...$elementsLeft, ...$elementsRight]),
+            fn(float $xCandidate) => $xCandidate > $pageLeft + ($pageWidth * 0.07) && $xCandidate < $pageRight - ($pageWidth * 0.07),
+        );
+
+        $lineExtents = array_map(
+            static fn(array $positionedTextElementsOnLine) => array_map(
+                static fn(PositionedTextElement $e) => [$frame->along($e), $frame->end($e)],
+                $positionedTextElementsOnLine,
+            ),
+            $positionedElementsGroupedByLine,
+        );
+        $elementMissCounts = $headerEndLineIndices = [];
+        sort($xCandidates);
+        foreach ($xCandidates as $xCandidateIndex => $xCandidate) {
+            $currentMissCount = $maxStreakCount = 0;
+            $currentStreakStart = $maxStreakStart = null;
+            foreach ($lineExtents as $lineIndex => $extentsOnLine) {
+                if (self::elementOnLineCrossesX($extentsOnLine, $xCandidate)) {
+                    $currentMissCount = 0;
+                    $currentStreakStart = null;
+                } else {
+                    $currentStreakStart ??= $lineIndex;
+                    $currentMissCount++;
+                    if ($currentMissCount > $maxStreakCount) {
+                        $maxStreakCount = $currentMissCount;
+                        $maxStreakStart = $currentStreakStart;
+                    }
+                }
+            }
+            $elementMissCounts[$xCandidateIndex] = $maxStreakCount;
+            $headerEndLineIndices[$xCandidateIndex] = $maxStreakStart;
+        }
+
+        if ($elementMissCounts === []
+            || ($maxMissCount = max($elementMissCounts)) < self::NR_OF_LINES_TO_BE_CONSIDERED_COLUMNS) {
+            return $positionedElementsGroupedByLine;
+        }
+
+        $elementMissCounts = array_filter($elementMissCounts, fn(int $missCount) => $missCount >= $maxMissCount - 2);
+        $pruneIndices = [];
+        arsort($elementMissCounts);
+        foreach ($elementMissCounts as $candidateXIndex => $elementMissCount) {
+            if (array_key_exists($candidateXIndex + 1, $elementMissCounts) && $elementMissCount === $elementMissCounts[$candidateXIndex + 1]) {
+                $pruneIndices[] = $candidateXIndex;
+            }
+        }
+
+        $elementMissCounts = array_diff_key($elementMissCounts, array_flip($pruneIndices));
+        $headerEndLineIndices = array_intersect_key($headerEndLineIndices, $elementMissCounts);
+        $xGutters = array_intersect_key($xCandidates, $elementMissCounts);
+        $minimumColumnWidth = ($pageRight - $pageLeft) / 100 * self::MINIMUM_COLUMN_WIDTH_PERCENTAGE;
+        foreach (($zeroIndexedGutters = array_values($xGutters)) as $xGutterIndex => $xGutter) {
+            if ($xGutter < ($zeroIndexedGutters[$xGutterIndex - 1] ?? $pageLeft) + $minimumColumnWidth) {
+                return $positionedElementsGroupedByLine;
+            }
+        }
+
+        try {
+            $footerStartLineIndices = array_combine(
+                array_keys($headerEndLineIndices),
+                array_map(
+                    static fn(?int $headerEndLineIndex, int $elementMissCount): int => ($headerEndLineIndex ?? 0) + $elementMissCount,
+                    $headerEndLineIndices,
+                    $elementMissCounts,
+                ),
+            );
+        } catch (ValueError) {
+            throw new ParseFailureException();
+        }
+        $indexFirstColumnStart = (int) max(0, ...$headerEndLineIndices);
+        $indexLastColumnEnd = min($nrOfLines, ...$footerStartLineIndices);
+        $columns = [];
+        foreach (array_slice($positionedElementsGroupedByLine, $indexFirstColumnStart, $indexLastColumnEnd - $indexFirstColumnStart) as $positionedElementsLineInColumn) {
+            foreach ($positionedElementsLineInColumn as $positionedTextElement) {
+                $elementLeft = $frame->along($positionedTextElement);
+                $elementRight = $frame->end($positionedTextElement);
+                $elementCenter = ($elementLeft + $elementRight) / 2;
+                $columnIndex = count($xGutters);
+                foreach (array_values($xGutters) as $xGutterIndex => $xGutter) {
+                    if ($elementCenter < $xGutter) {
+                        $columnIndex = $xGutterIndex;
+                        break;
+                    }
+                }
+
+                $columns[$columnIndex][] = $positionedTextElement;
+            }
+        }
+
+        ksort($columns);
+        return array_values(array_filter([
+            ...array_slice($positionedElementsGroupedByLine, 0, $indexFirstColumnStart),
+            ...array_merge(...array_map(fn(array $column) => iterator_to_array(TextOverlapStrategy::group($column, $frame)), $columns)),
+            ...array_slice($positionedElementsGroupedByLine, $indexLastColumnEnd),
+        ]));
+    }
+
+    /** @param list<array{float, float}> $extentsOnLine start and end of each element along the baseline */
+    private static function elementOnLineCrossesX(array $extentsOnLine, float $x): bool {
+        foreach ($extentsOnLine as [$start, $end]) {
+            if ($start < $x && $end > $x) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

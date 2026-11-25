@@ -28,6 +28,9 @@ class XlsxExtractor extends AbstractOoxmlExtractor
 
         $out = [];
         foreach ($sheets as $sheet) {
+            if ($this->textBudget <= 0) {
+                break;
+            }
             $xml = $this->readPart($sheet['path']);
             if ($xml === null) {
                 continue;
@@ -63,7 +66,9 @@ class XlsxExtractor extends AbstractOoxmlExtractor
                 if ($target === null) {
                     continue;
                 }
-                $sheets[] = ['name' => $sheet['name'], 'path' => 'xl/' . ltrim($target, '/')];
+                // absolute targets start at the package root, relative ones at the workbook
+                $path = str_starts_with($target, '/') ? $target : 'xl/' . $target;
+                $sheets[] = ['name' => $sheet['name'], 'path' => $path];
             }
             if ($sheets !== []) {
                 return $sheets;
@@ -167,7 +172,7 @@ class XlsxExtractor extends AbstractOoxmlExtractor
         try {
             while ($reader->read()) {
                 if ($reader->nodeType === XMLReader::ELEMENT && $reader->localName === 'si') {
-                    $strings[] = $reader->readString();
+                    $strings[] = $this->readElementText($reader);
                 }
             }
         } finally {
@@ -225,21 +230,21 @@ class XlsxExtractor extends AbstractOoxmlExtractor
             $out = '';
             $rowFirst = true;
             $cellFirst = true;
-            while ($reader->read()) {
+            while ($this->textBudget > 0 && $reader->read()) {
                 if ($reader->nodeType !== XMLReader::ELEMENT) {
                     continue;
                 }
                 $local = $reader->localName;
                 if ($local === 'row') {
                     if (!$rowFirst) {
-                        $out .= "\n";
+                        $this->appendText($out, "\n");
                     }
                     $rowFirst = false;
                     $cellFirst = true;
                 } elseif ($local === 'c') {
                     $type = $reader->getAttribute('t') ?? '';
                     if (!$cellFirst) {
-                        $out .= "\t";
+                        $this->appendText($out, "\t");
                     }
                     $cellFirst = false;
                     $value = $this->readCellValue($reader);
@@ -247,7 +252,7 @@ class XlsxExtractor extends AbstractOoxmlExtractor
                         $idx = (int) $value;
                         $value = $sharedStrings[$idx] ?? '';
                     }
-                    $out .= $value;
+                    $this->appendText($out, $value);
                 }
             }
             return $out;
@@ -272,7 +277,7 @@ class XlsxExtractor extends AbstractOoxmlExtractor
             $nt = $reader->nodeType;
             $ln = $reader->localName;
             if ($nt === XMLReader::ELEMENT && ($ln === 'v' || $ln === 't')) {
-                $value .= $reader->readString();
+                $value .= $this->readElementText($reader);
             } elseif ($nt === XMLReader::END_ELEMENT && $ln === 'c') {
                 break;
             }

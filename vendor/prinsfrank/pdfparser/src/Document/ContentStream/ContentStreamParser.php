@@ -19,110 +19,198 @@ use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\TextState
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\Type3FontOperator;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\XObjectOperator;
 use PrinsFrank\PdfParser\Document\ContentStream\Object\TextObject;
-use PrinsFrank\PdfParser\Document\Object\Decorator\DecoratedObject;
+use PrinsFrank\PdfParser\Document\Object\CompressedObject\CompressedObject;
+use PrinsFrank\PdfParser\Document\Object\UncompressedObject\UncompressedObject;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 /** @internal */
 class ContentStreamParser {
+    public const OPERATOR_CHARS = ['X' => true, 'x' => true, 'I' => true, 'D' => true, 'C' => true, 'T' => true, '*' => true, 'S' => true, 's' => true, 'N' => true, 'n' => true, 'G' => true, 'g' => true, 'K' => true, 'k' => true, 'm' => true, 'i' => true, 'e' => true, 'W' => true, 'w' => true, 'J' => true, 'j' => true, 'M' => true, 'd' => true, 'l' => true, 'c' => true, 'v' => true, 'y' => true, 'h' => true, 'f' => true, 'F' => true, 'B' => true, 'Q' => true, 'q' => true, '\'' => true, '"' => true, 'E' => true, 'P' => true, 'R' => true, 'r' => true, 'b' => true, 'z' => true, 'L' => true, 'o' => true, '1' => true, '0' => true];
+    private const OPERATOR_MAP = [
+        'BMC' => MarkedContentOperator::BeginMarkedContent,
+        'BDC' => MarkedContentOperator::BeginMarkedContentWithProperties,
+        'EMC' => MarkedContentOperator::EndMarkedContent,
+        'SCN' => ColorOperator::SetStrokingParams,
+        'scn' => ColorOperator::SetColorParams,
+        'BX' => CompatibilityOperator::BeginCompatibilitySection,
+        'EX' => CompatibilityOperator::EndCompatibilitySection,
+        'BI' => InlineImageOperator::Begin,
+        'ID' => InlineImageOperator::BeginImageData,
+        'EI' => InlineImageOperator::End,
+        'MD' => MarkedContentOperator::Tag,
+        'DP' => MarkedContentOperator::TagProperties,
+        'BT' => TextObjectOperator::BEGIN,
+        'ET' => TextObjectOperator::END,
+        'W*' => ClippingPathOperator::INTERSECT_EVEN_ODD,
+        'CS' => ColorOperator::SetName,
+        'cs' => ColorOperator::SetNameNonStroking,
+        'SC' => ColorOperator::SetStrokingColor,
+        'sc' => ColorOperator::SetColor,
+        'RG' => ColorOperator::SetStrokingColorDeviceRGB,
+        'rg' => ColorOperator::SetColorDeviceRGB,
+        'cm' => GraphicsStateOperator::ModifyCurrentTransformationMatrix,
+        'ri' => GraphicsStateOperator::SetIntent,
+        'gs' => GraphicsStateOperator::SetDictName,
+        're' => PathConstructionOperator::RECTANGLE,
+        'f*' => PathPaintingOperator::FILL_EVEN_ODD,
+        'B*' => PathPaintingOperator::FILL_STROKE_EVEN_ODD,
+        'b*' => PathPaintingOperator::CLOSE_FILL_STROKE,
+        'Td' => TextPositioningOperator::MOVE_OFFSET,
+        'TD' => TextPositioningOperator::MOVE_OFFSET_LEADING,
+        'Tm' => TextPositioningOperator::SET_MATRIX,
+        'T*' => TextPositioningOperator::NEXT_LINE,
+        'Tj' => TextShowingOperator::SHOW,
+        'TJ' => TextShowingOperator::SHOW_ARRAY,
+        'Tc' => TextStateOperator::CHAR_SPACE,
+        'Tw' => TextStateOperator::WORD_SPACE,
+        'Tz' => TextStateOperator::SCALE,
+        'TL' => TextStateOperator::LEADING,
+        'Tf' => TextStateOperator::FONT_SIZE,
+        'Tr' => TextStateOperator::RENDER,
+        'Ts' => TextStateOperator::RISE,
+        'd0' => Type3FontOperator::SetWidth,
+        'd1' => Type3FontOperator::SetWidthAndBoundingBox,
+        'Do' => XObjectOperator::Paint,
+        'W' => ClippingPathOperator::INTERSECT,
+        'G' => ColorOperator::SetStrokingColorSpace,
+        'g' => ColorOperator::SetColorSpace,
+        'K' => ColorOperator::SetStrokingColorDeviceCMYK,
+        'k' => ColorOperator::SetColorDeviceCMYK,
+        'q' => GraphicsStateOperator::SaveCurrentStateToStack,
+        'Q' => GraphicsStateOperator::RestoreMostRecentStateFromStack,
+        'w' => GraphicsStateOperator::SetLineWidth,
+        'J' => GraphicsStateOperator::SetLineCap,
+        'j' => GraphicsStateOperator::SetLineJoin,
+        'M' => GraphicsStateOperator::SetMiterJoin,
+        'd' => GraphicsStateOperator::SetLineDash,
+        'i' => GraphicsStateOperator::SetFlatness,
+        'm' => PathConstructionOperator::MOVE,
+        'l' => PathConstructionOperator::LINE,
+        'c' => PathConstructionOperator::CURVE_BEZIER_123,
+        'v' => PathConstructionOperator::CURVE_BEZIER_23,
+        'y' => PathConstructionOperator::CURVE_BEZIER_13,
+        'h' => PathConstructionOperator::CLOSE,
+        'S' => PathPaintingOperator::STROKE,
+        's' => PathPaintingOperator::CLOSE_STROKE,
+        'f' => PathPaintingOperator::FILL,
+        'F' => PathPaintingOperator::FILL_DEPRECATED,
+        'B' => PathPaintingOperator::FILL_STROKE,
+        'n' => PathPaintingOperator::END,
+        '\'' => TextShowingOperator::MOVE_SHOW,
+        '"' => TextShowingOperator::MOVE_SHOW_SPACING,
+    ];
+
     /**
-     * @param list<DecoratedObject> $contentsObjects
+     * @param list<UncompressedObject|CompressedObject> $contentsObjects
      * @throws ParseFailureException
      */
     public static function parse(array $contentsObjects): ContentStream {
         $content = [];
-        $inComment = $inStringLiteral = $inResourceName = $inDictionary = false;
+        $inComment = $inStringLiteral = $inResourceName = $inDictionary = $inInlineImage = false;
         $inArrayLevel = $inStringLevel = 0;
-        $textObject = $previousChar = $secondToLastChar = $thirdToLastChar = $previousContentStream = $startPreviousOperandIndex = $startOfCommentOffset = $endCommentOffset = null;
+        $textObject = $previousChar = $secondToLastChar = $thirdToLastChar = $fourthToLastChar = $previousContentStream = $startPreviousOperandIndex = $startOfCommentOffset = $endCommentOffset = null;
         foreach ($contentsObjects as $contentsObject) {
             $startCurrentOperandIndex = 0;
-            $contentStream = $contentsObject->getStream();
+            $contentStream = $contentsObject->getContent();
             $contentStreamSize = $contentStream->getSizeInBytes();
+            $rawStream = $contentStream->toString();
             for ($index = 0; $index < $contentStreamSize; $index++) {
-                $char = $contentStream->read($index, 1);
-                if ($inComment === true) {
-                    if (in_array($char, ["\r", "\n"], true)) {
+                $char = $rawStream[$index];
+                if ($inComment) {
+                    if ($char === "\r" || $char === "\n") {
                         $endCommentOffset = $index + 1;
                         $inComment = false;
                     }
                     continue;
                 }
 
-                if ($inStringLiteral === true) {
-                    if ($char === ')' && $previousChar !== '\\') {
+                if ($inInlineImage) {
+                    if ($char === 'I' && $previousChar === 'E' && ($secondToLastChar !== '\\' || ($thirdToLastChar === '\\' && $fourthToLastChar !== '\\'))) {
+                        $inInlineImage = false;
+                    }
+                } elseif ($inStringLiteral) {
+                    if ($char === ')' && ($previousChar !== '\\' || ($secondToLastChar === '\\' && $thirdToLastChar !== '\\'))) {
                         $inStringLiteral = false;
                     }
-                } elseif ($inResourceName === true) {
-                    if (in_array($char, [' ', '<', '(', '/', "\r", "\n"], true) && $previousChar !== '\\') {
+                } elseif ($inResourceName) {
+                    if ($previousChar !== '\\' && ($char === ' ' || $char === '<' || $char === '(' || $char === '/' || $char === "\r" || $char === "\n")) {
                         $inResourceName = false;
                     }
-                } elseif ($inDictionary === true) {
-                    if ($char === '>' && $previousChar === '>' && $secondToLastChar !== '\\') {
+                } elseif ($inDictionary) {
+                    if ($char === '>' && $previousChar === '>' && ($secondToLastChar !== '\\' || ($thirdToLastChar === '\\' && $fourthToLastChar !== '\\'))) {
                         $inDictionary = false;
                     }
                 } elseif ($char === '%') {
                     $inComment = true;
                     $startOfCommentOffset = $index;
                     $previousChar = $secondToLastChar = $thirdToLastChar = null;
-                } elseif ($char === '[' && $previousChar !== '\\') {
+                    continue;
+                } elseif ($char === '[' && ($previousChar !== '\\' || ($secondToLastChar === '\\' && $thirdToLastChar !== '\\'))) {
                     $inArrayLevel++;
-                } elseif ($char === '<' && $previousChar === '<' && $secondToLastChar !== '\\') {
+                } elseif ($char === '<' && $previousChar === '<' && ($secondToLastChar !== '\\' || $thirdToLastChar === '\\')) {
                     $inDictionary = true;
-                } elseif ($char === '<' && $previousChar !== '\\' && $contentStream->read($index + 1, 1) !== '<') {
+                } elseif ($char === '<' && ($previousChar !== '\\' || ($secondToLastChar === '\\' && $thirdToLastChar !== '\\')) && $rawStream[$index + 1] !== '<') {
                     $inStringLevel++;
-                } elseif ($char === '(' && $previousChar !== '\\') {
+                } elseif ($char === '(' && ($previousChar !== '\\' || ($secondToLastChar === '\\' && $thirdToLastChar !== '\\'))) {
                     $inStringLiteral = true;
-                } elseif ($char === '/' && $previousChar !== '\\') {
+                } elseif ($char === '/' && ($previousChar !== '\\' || ($secondToLastChar === '\\' && $thirdToLastChar !== '\\'))) {
                     $inResourceName = true;
                 } elseif ($inStringLevel > 0 || $inArrayLevel > 0) {
-                    if ($inStringLevel > 0 && $char === '>' && $previousChar !== '\\') {
+                    if ($inStringLevel > 0 && $char === '>' && ($previousChar !== '\\' || ($secondToLastChar === '\\' && $thirdToLastChar !== '\\'))) {
                         $inStringLevel--;
-                    } elseif ($inArrayLevel > 0 && $char === ']' && $previousChar !== '\\') {
+                    } elseif ($inArrayLevel > 0 && $char === ']' && ($previousChar !== '\\' || ($secondToLastChar === '\\' && $thirdToLastChar !== '\\'))) {
                         $inArrayLevel--;
                     }
-                } elseif ($char === 'T' && $previousChar === 'B') { // TextObjectOperator::BEGIN
-                    $startCurrentOperandIndex = $index + 1;
-                    $textObject = new TextObject();
-                } elseif ($char === 'T' && $previousChar === 'E') { // TextObjectOperator::END
-                    $startCurrentOperandIndex = $index + 1;
-                    if ($textObject !== null) {
-                        $content[] = $textObject;
-                        $textObject = null;
-                    }
-                } elseif ($char === 'C'
-                    && (($secondToLastChar === 'B' && ($previousChar === 'M' || $previousChar === 'D')) || ($secondToLastChar === 'E' && $previousChar === 'M'))) { // MarkedContentOperator::BeginMarkedContent, MarkedContentOperator::EndMarkedContent, MarkedContentOperator::BeginMarkedContentWithProperties
-                    $startCurrentOperandIndex = $index + 1;
-                } elseif (($operator = self::getOperator($char, $previousChar, $secondToLastChar, $thirdToLastChar)) !== null
-                    && (($nextChar = $contentStream->read($index + 1, 1)) === '' || self::getOperator($nextChar, $char, $previousChar, $secondToLastChar) === null)) { // Skip the current hit if the next iteration is also a valid operator
-                    $operands = '';
-                    if ($previousContentStream !== null && $startPreviousOperandIndex !== null && $startPreviousOperandIndex < $previousContentStream->getSizeInBytes()) {
-                        $operands .= $previousContentStream->read($startPreviousOperandIndex, $previousContentStream->getSizeInBytes() - $startPreviousOperandIndex);
-                        $startPreviousOperandIndex = null;
-                    }
-                    $operandLength = $index + 1 - $startCurrentOperandIndex - strlen($operator->value);
-                    if ($operandLength > 0) {
-                        $operandEndOffset = $index + 1 - strlen($operator->value);
-                        if ($endCommentOffset !== null
-                            && $endCommentOffset < $operandEndOffset
-                            && $startOfCommentOffset !== null
-                            && $startOfCommentOffset > $startCurrentOperandIndex) {
-                            $operands .= $contentStream->read($startCurrentOperandIndex, $startOfCommentOffset - $startCurrentOperandIndex);
-                            $operands .= $contentStream->read($endCommentOffset, $operandEndOffset - $endCommentOffset);
-                        } else {
-                            $operands .= $contentStream->read($startCurrentOperandIndex, $operandLength);
+                } elseif (isset(self::OPERATOR_CHARS[$char])) {
+                    if ($char === 'T' && $previousChar === 'B') { // TextObjectOperator::BEGIN
+                        $startCurrentOperandIndex = $index + 1;
+                        $textObject = new TextObject();
+                    } elseif ($char === 'T' && $previousChar === 'E') { // TextObjectOperator::END
+                        $startCurrentOperandIndex = $index + 1;
+                        if ($textObject !== null) {
+                            $content[] = $textObject;
+                            $textObject = null;
                         }
-                    }
+                    } elseif ($char === 'D' && $previousChar === 'I' && ($secondToLastChar !== '\\' || ($thirdToLastChar === '\\' && $fourthToLastChar !== '\\'))) {
+                        $inInlineImage = true;
+                    } elseif ($char === 'C'
+                        && (($secondToLastChar === 'B' && ($previousChar === 'M' || $previousChar === 'D')) || ($secondToLastChar === 'E' && $previousChar === 'M'))) { // MarkedContentOperator::BeginMarkedContent, MarkedContentOperator::EndMarkedContent, MarkedContentOperator::BeginMarkedContentWithProperties
+                        $startCurrentOperandIndex = $index + 1;
+                    } elseif (($operator = self::getOperator($char, $previousChar, $secondToLastChar, $thirdToLastChar)) !== null
+                        && (($nextChar = $rawStream[$index + 1] ?? '') === '' || self::getOperator($nextChar, $char, $previousChar, $secondToLastChar) === null)) { // Skip the current hit if the next iteration is also a valid operator
+                        $operands = '';
+                        if ($previousContentStream !== null && $startPreviousOperandIndex !== null && $startPreviousOperandIndex < $previousContentStream->getSizeInBytes()) {
+                            $operands .= $previousContentStream->read($startPreviousOperandIndex, $previousContentStream->getSizeInBytes() - $startPreviousOperandIndex);
+                            $startPreviousOperandIndex = null;
+                        }
+                        $operatorLength = strlen($operator->value);
+                        $operandLength = $index + 1 - $startCurrentOperandIndex - $operatorLength;
+                        if ($operandLength > 0) {
+                            $operandEndOffset = $index + 1 - $operatorLength;
+                            if ($endCommentOffset !== null
+                                && $endCommentOffset < $operandEndOffset
+                                && $startOfCommentOffset !== null
+                                && $startOfCommentOffset > $startCurrentOperandIndex) {
+                                $operands .= substr($rawStream, $startCurrentOperandIndex, $startOfCommentOffset - $startCurrentOperandIndex);
+                                $operands .= substr($rawStream, $endCommentOffset, $operandEndOffset - $endCommentOffset);
+                            } else {
+                                $operands .= substr($rawStream, $startCurrentOperandIndex, $operandLength);
+                            }
+                        }
 
-                    $command = new ContentStreamCommand($operator, trim($operands));
-                    if ($textObject !== null) {
-                        $textObject->addContentStreamCommand($command);
-                    } else {
-                        $content[] = $command;
-                    }
+                        $command = new ContentStreamCommand($operator, trim($operands));
+                        if ($textObject !== null) {
+                            $textObject->addContentStreamCommand($command);
+                        } else {
+                            $content[] = $command;
+                        }
 
-                    $startCurrentOperandIndex = $index + 1;
-                    $endCommentOffset = $startOfCommentOffset = null;
+                        $startCurrentOperandIndex = $index + 1;
+                        $endCommentOffset = $startOfCommentOffset = null;
+                    }
                 }
 
+                $fourthToLastChar = $thirdToLastChar;
                 $thirdToLastChar = $secondToLastChar;
                 $secondToLastChar = $previousChar;
                 $previousChar = $char;
@@ -135,102 +223,23 @@ class ContentStreamParser {
         return new ContentStream(...$content);
     }
 
-    /**
-     * This method uses three maps instead of calling $enum::tryFrom for all possible enums
-     * as operator retrieval happens possibly millions of times in a single file
-     */
     public static function getOperator(string $currentChar, ?string $previousChar, ?string $secondToLastChar, ?string $thirdToLastChar): CompatibilityOperator|InlineImageOperator|MarkedContentOperator|TextObjectOperator|ClippingPathOperator|ColorOperator|GraphicsStateOperator|PathConstructionOperator|PathPaintingOperator|TextPositioningOperator|TextShowingOperator|TextStateOperator|Type3FontOperator|XObjectOperator|null {
-        $threeLetterMatch = match ($secondToLastChar . $previousChar . $currentChar) {
-            'BMC' => MarkedContentOperator::BeginMarkedContent,
-            'BDC' => MarkedContentOperator::BeginMarkedContentWithProperties,
-            'EMC' => MarkedContentOperator::EndMarkedContent,
-            'SCN' => ColorOperator::SetStrokingParams,
-            'scn' => ColorOperator::SetColorParams,
-            default => null,
-        };
-        if ($threeLetterMatch !== null) {
-            return in_array($thirdToLastChar, ['\\', '/'], true) ? null : $threeLetterMatch;
+        if ($secondToLastChar !== null && isset(self::OPERATOR_CHARS[$secondToLastChar]) && $previousChar !== null && isset(self::OPERATOR_CHARS[$previousChar])) {
+            $key = $secondToLastChar . $previousChar . $currentChar;
+            if (isset(self::OPERATOR_MAP[$key])) {
+                return ($thirdToLastChar === '\\' || $thirdToLastChar === '/') ? null : self::OPERATOR_MAP[$key];
+            }
         }
 
-        $twoLetterMatch = match ($previousChar . $currentChar) {
-            'BX' => CompatibilityOperator::BeginCompatibilitySection,
-            'EX' => CompatibilityOperator::EndCompatibilitySection,
-            'BI' => InlineImageOperator::Begin,
-            'ID' => InlineImageOperator::BeginImageData,
-            'EI' => InlineImageOperator::End,
-            'MD' => MarkedContentOperator::Tag,
-            'DP' => MarkedContentOperator::TagProperties,
-            'BT' => TextObjectOperator::BEGIN,
-            'ET' => TextObjectOperator::END,
-            'W*' => ClippingPathOperator::INTERSECT_EVEN_ODD,
-            'CS' => ColorOperator::SetName,
-            'cs' => ColorOperator::SetNameNonStroking,
-            'SC' => ColorOperator::SetStrokingColor,
-            'sc' => ColorOperator::SetColor,
-            'RG' => ColorOperator::SetStrokingColorDeviceRGB,
-            'rg' => ColorOperator::SetColorDeviceRGB,
-            'cm' => GraphicsStateOperator::ModifyCurrentTransformationMatrix,
-            'ri' => GraphicsStateOperator::SetIntent,
-            'gs' => GraphicsStateOperator::SetDictName,
-            're' => PathConstructionOperator::RECTANGLE,
-            'f*' => PathPaintingOperator::FILL_EVEN_ODD,
-            'B*' => PathPaintingOperator::FILL_STROKE_EVEN_ODD,
-            'b*' => PathPaintingOperator::CLOSE_FILL_STROKE,
-            'Td' => TextPositioningOperator::MOVE_OFFSET,
-            'TD' => TextPositioningOperator::MOVE_OFFSET_LEADING,
-            'Tm' => TextPositioningOperator::SET_MATRIX,
-            'T*' => TextPositioningOperator::NEXT_LINE,
-            'Tj' => TextShowingOperator::SHOW,
-            'TJ' => TextShowingOperator::SHOW_ARRAY,
-            'Tc' => TextStateOperator::CHAR_SPACE,
-            'Tw' => TextStateOperator::WORD_SPACE,
-            'Tz' => TextStateOperator::SCALE,
-            'TL' => TextStateOperator::LEADING,
-            'Tf' => TextStateOperator::FONT_SIZE,
-            'Tr' => TextStateOperator::RENDER,
-            'Ts' => TextStateOperator::RISE,
-            'd0' => Type3FontOperator::SetWidth,
-            'd1' => Type3FontOperator::SetWidthAndBoundingBox,
-            'Do' => XObjectOperator::Paint,
-            default => null,
-        };
-        if ($twoLetterMatch !== null) {
-            return in_array($secondToLastChar, ['\\', '/'], true) ? null : $twoLetterMatch;
+        if ($previousChar !== null && isset(self::OPERATOR_CHARS[$previousChar])) {
+            $key = $previousChar . $currentChar;
+            if (isset(self::OPERATOR_MAP[$key])) {
+                return ($secondToLastChar === '\\' || $secondToLastChar === '/') ? null : self::OPERATOR_MAP[$key];
+            }
         }
 
-        $oneLetterMatch = match ($currentChar) {
-            'W' => ClippingPathOperator::INTERSECT,
-            'G' => ColorOperator::SetStrokingColorSpace,
-            'g' => ColorOperator::SetColorSpace,
-            'K' => ColorOperator::SetStrokingColorDeviceCMYK,
-            'k' => ColorOperator::SetColorDeviceCMYK,
-            'q' => GraphicsStateOperator::SaveCurrentStateToStack,
-            'Q' => GraphicsStateOperator::RestoreMostRecentStateFromStack,
-            'w' => GraphicsStateOperator::SetLineWidth,
-            'J' => GraphicsStateOperator::SetLineCap,
-            'j' => GraphicsStateOperator::SetLineJoin,
-            'M' => GraphicsStateOperator::SetMiterJoin,
-            'd' => GraphicsStateOperator::SetLineDash,
-            'i' => GraphicsStateOperator::SetFlatness,
-            'm' => PathConstructionOperator::MOVE,
-            'l' => PathConstructionOperator::LINE,
-            'c' => PathConstructionOperator::CURVE_BEZIER_123,
-            'v' => PathConstructionOperator::CURVE_BEZIER_23,
-            'y' => PathConstructionOperator::CURVE_BEZIER_13,
-            'h' => PathConstructionOperator::CLOSE,
-            'S' => PathPaintingOperator::STROKE,
-            's' => PathPaintingOperator::CLOSE_STROKE,
-            'f' => PathPaintingOperator::FILL,
-            'F' => PathPaintingOperator::FILL_DEPRECATED,
-            'B' => PathPaintingOperator::FILL_STROKE,
-            'n' => PathPaintingOperator::END,
-            '\'' => TextShowingOperator::MOVE_SHOW,
-            '"' => TextShowingOperator::MOVE_SHOW_SPACING,
-            default => null,
-        };
-
-        if ($oneLetterMatch !== null) {
-            return in_array($previousChar, ['\\', '/'], true) ? null : $oneLetterMatch;
+        if (isset(self::OPERATOR_MAP[$currentChar])) {
+            return ($previousChar === '\\' || $previousChar === '/') ? null : self::OPERATOR_MAP[$currentChar];
         }
 
         return null;

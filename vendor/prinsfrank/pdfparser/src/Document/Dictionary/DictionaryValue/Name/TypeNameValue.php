@@ -3,15 +3,8 @@ declare(strict_types=1);
 
 namespace PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\Name;
 
-use PrinsFrank\PdfParser\Document\Object\Decorator\Catalog;
-use PrinsFrank\PdfParser\Document\Object\Decorator\DecoratedObject;
-use PrinsFrank\PdfParser\Document\Object\Decorator\EmbeddedFile;
-use PrinsFrank\PdfParser\Document\Object\Decorator\FileSpecification;
-use PrinsFrank\PdfParser\Document\Object\Decorator\Font;
-use PrinsFrank\PdfParser\Document\Object\Decorator\GenericObject;
-use PrinsFrank\PdfParser\Document\Object\Decorator\Page;
-use PrinsFrank\PdfParser\Document\Object\Decorator\Pages;
-use PrinsFrank\PdfParser\Document\Object\Decorator\XObject;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Page;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Font;
 
 enum TypeNameValue: string implements NameValue {
     case _3_D = '3D';
@@ -51,6 +44,7 @@ enum TypeNameValue: string implements NameValue {
     case DSS = 'DSS';
     case EMBEDDED_FILE = 'EmbeddedFile';
     case ENCODING = 'Encoding';
+    case ENCRYPT = 'Encrypt';
     case ENCRYPTED_PAYLOAD = 'EncryptedPayload';
     case EX_DATA = 'ExData';
     case EXT_G_STATE = 'ExtGState';
@@ -65,6 +59,7 @@ enum TypeNameValue: string implements NameValue {
     case GEO_G_C_S = 'GEOGCS';
     case GROUP = 'Group';
     case HALF_TONE = 'Halftone';
+    case INFO = 'Info';
     case INLINE = 'Inline';
     case LAYOUT = 'Layout';
     case M_C_R = 'MCR';
@@ -83,7 +78,7 @@ enum TypeNameValue: string implements NameValue {
     case METADATA = 'Metadata';
     case MIN_BIT_DEPTH = 'MinBitDepth';
     case MIN_SCREEN_SIZE = 'MinScreenSize';
-    case NAMESPACE = 'Namespace';
+    case _NAMESPACE = 'Namespace';
     case NAV_NODE = 'NavNode';
     case NAVIGATOR = 'Navigator';
     case NUMBER_FORMAT = 'NumberFormat';
@@ -138,18 +133,4 @@ enum TypeNameValue: string implements NameValue {
     case VRI = 'VRI';
     case X_OBJECT = 'XObject';
     case X_REF = 'XRef';
-
-    /** @return class-string<DecoratedObject> */
-    public function getDecoratorFQN(): string {
-        return match ($this) {
-            TypeNameValue::CATALOG => Catalog::class,
-            TypeNameValue::EMBEDDED_FILE => EmbeddedFile::class,
-            TypeNameValue::FILE_SPEC => FileSpecification::class,
-            TypeNameValue::FONT => Font::class,
-            TypeNameValue::PAGE => Page::class,
-            TypeNameValue::PAGES => Pages::class,
-            TypeNameValue::X_OBJECT => XObject::class,
-            default => GenericObject::class,
-        };
-    }
 }

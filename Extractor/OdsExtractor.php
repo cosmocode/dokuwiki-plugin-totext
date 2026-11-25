@@ -35,7 +35,7 @@ class OdsExtractor extends AbstractOdfExtractor
         try {
             $out = [];
             $sheetIndex = 0;
-            while ($reader->read()) {
+            while ($this->textBudget > 0 && $reader->read()) {
                 if ($reader->nodeType === XMLReader::ELEMENT && $reader->localName === 'table') {
                     $sheetIndex++;
                     $name = $reader->getAttributeNs('name', self::TABLE_NS) ?? ('Sheet' . $sheetIndex);
@@ -63,12 +63,12 @@ class OdsExtractor extends AbstractOdfExtractor
         $out = '';
         $rowFirst = true;
         $cellFirst = true;
-        while ($reader->read()) {
+        while ($this->textBudget > 0 && $reader->read()) {
             $nt = $reader->nodeType;
             $local = $reader->localName;
             if ($nt === XMLReader::ELEMENT && $local === 'table-row') {
                 if (!$rowFirst) {
-                    $out .= "\n";
+                    $this->appendText($out, "\n");
                 }
                 $rowFirst = false;
                 $cellFirst = true;
@@ -84,14 +84,14 @@ class OdsExtractor extends AbstractOdfExtractor
                     $repeat = min($repeat, self::MAX_REPEAT);
                     for ($r = 0; $r < $repeat; $r++) {
                         if (!$cellFirst) {
-                            $out .= "\t";
+                            $this->appendText($out, "\t");
                         }
                         $cellFirst = false;
-                        $out .= $value;
+                        $this->appendText($out, $value);
                     }
                 } else {
                     if (!$cellFirst) {
-                        $out .= "\t";
+                        $this->appendText($out, "\t");
                     }
                     $cellFirst = false;
                 }

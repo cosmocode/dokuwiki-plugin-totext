@@ -3,14 +3,8 @@
 namespace PrinsFrank\PdfParser\Document\ContentStream\PositionedText;
 
 /**
- * The drawing state at one point while reading a content stream: where text lands on the page (the transformation
- * matrix) and how it looks (the text state: font, size and spacing). The PDF `q` and `Q` operators save and restore
- * exactly these two together, so the reader keeps a stack of GraphicsState values - one is pushed on `q` and popped
- * back on `Q`.
- *
- * Content reused through a Form XObject (painted with `Do`) starts from the state already in effect where it is
- * painted, not a blank one: it keeps the surrounding text state and combines its own /Matrix with the transformation
- * matrix. See ContentStream::getFormXObjectTextElements().
+ * The part of the graphics state that places and shapes text: the current transformation matrix and the text state
+ * (font, size and spacing). The q operator saves it on a stack and the Q operator restores it.
  *
  * @internal
  */
@@ -20,9 +14,12 @@ final readonly class GraphicsState {
         public TextState $textState,        // font, size and spacing of the text being shown
     ) {}
 
-    /** The state a content stream starts in: no transformation, and no font chosen yet. */
-    public static function initial(): self {
-        return new self(new TransformationMatrix(1, 0, 0, 1, 0, 0), new TextState(null, null));
+    /**
+     * The state a content stream starts in: painted under $ctm - the matrix in effect where the stream is placed on
+     * the page - and with no font chosen yet.
+     */
+    public static function initial(TransformationMatrix $ctm): self {
+        return new self($ctm, new TextState(null, null));
     }
 
     public function withCtm(TransformationMatrix $ctm): self {

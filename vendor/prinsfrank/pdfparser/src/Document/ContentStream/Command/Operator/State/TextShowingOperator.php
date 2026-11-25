@@ -7,11 +7,15 @@ use Override;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\Interaction\InteractsWithTextState;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\Interaction\InteractsWithTransformationMatrix;
 use PrinsFrank\PdfParser\Document\ContentStream\Command\Operator\State\Interaction\ProducesPositionedTextElements;
+use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\ColorState;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\PositionedTextElement;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextSegment\TextSegment;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TransformationMatrix;
 use PrinsFrank\PdfParser\Document\ContentStream\PositionedText\TextState;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\TextStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\Page;
+use PrinsFrank\PdfParser\Document\Dictionary\Decorator\XObject;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\HexadecimalStringValue;
+use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\LiteralStringValue;
 use PrinsFrank\PdfParser\Exception\ParseFailureException;
 
 /** @internal */
@@ -33,36 +37,80 @@ enum TextShowingOperator: string implements InteractsWithTextState, ProducesPosi
 
     /** @throws ParseFailureException */
     #[Override]
-    public function applyToTextState(string $operands, TextState $textState): TextState {
+    public function applyToTextState(string $operands, TextState $textState, Page|XObject $context, ?Page $parent): TextState {
         if ($this === self::MOVE_SHOW_SPACING) {
             $spacing = explode(' ', trim($operands));
             if (count($spacing) !== 2) {
                 throw new ParseFailureException();
             }
 
-            return $textState
-                ->withCharSpace((float) $spacing[1])
-                ->withWordSpace((float) $spacing[0]);
+            return new TextState(
+                $textState->font,
+                $textState->fontSize,
+                (float) $spacing[1],
+                (float) $spacing[0],
+                $textState->scale,
+                $textState->leading,
+                $textState->render,
+                $textState->rise,
+            );
         }
 
         return $textState;
     }
 
     #[Override]
-    public function getPositionedTextElement(string $operands, TransformationMatrix $textMatrix, TransformationMatrix $globalTransformationMatrix, TextState $textState): PositionedTextElement {
-        if (($result = preg_match_all('/(?<chars>(<(\\\\>|[^>])*>)|(\((\\\\\)|[^)])*\)))(?<offset>-?[0-9]+(\.[0-9]+)?)?/', $operands, $matches, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL)) === false) {
-            throw new ParseFailureException(sprintf('Error with regex'));
-        } elseif ($result === 0) {
-            throw new ParseFailureException(sprintf('Operands "%s" is not in a recognized format', $operands));
+    public function getPositionedTextElement(
+        string $operands,
+        TransformationMatrix $textMatrix,
+        TransformationMatrix $globalTransformationMatrix,
+        TextState $textState,
+        ColorState $colorState,
+    ): PositionedTextElement {
+        if ($this === self::SHOW || $this === self::MOVE_SHOW || $this === self::MOVE_SHOW_SPACING) {
+            return new PositionedTextElement(
+                [
+                    new TextSegment(
+                        null,
+                        str_starts_with($operands, '(')
+                            ? LiteralStringValue::fromValue($operands) ?? throw new ParseFailureException()
+                            : HexadecimalStringValue::fromValue($operands) ?? throw new ParseFailureException(),
+                    )],
+                $textMatrix->multiplyWith($globalTransformationMatrix),
+                $textState,
+            );
         }
 
-        return new PositionedTextElement(
-            array_map(
-                fn(array $match) => new TextSegment(new TextStringValue($match['chars']), $match['offset'] !== null ? (float) $match['offset'] : null),
-                $matches,
-            ),
-            $textMatrix->multiplyWith($globalTransformationMatrix),  // 9.4.4, Note 2 on Trm calculation
-            $textState,
-        );
+        if (str_starts_with($operands, '[') === false || str_ends_with($operands, ']') === false) {
+            throw new ParseFailureException();
+        }
+
+        $operandLength = strlen($operands = substr($operands, 1, -1));
+        $textSegments = [];
+        $offset = 0;
+        while ($offset < $operandLength) {
+            $remainingOperand = substr($operands, $offset);
+            if (trim($remainingOperand) === '') {
+                break;
+            }
+
+            if (preg_match('/^\s*(?:(?<offset>[+-]?[0-9]+(\.[0-9]+)?|[+-]?\.[0-9])?\s*(?<chars>(<(\\\\>|[^>])*>)|(\((?:\\\\.|[^\\\\)])*\)))|(?<offsetOnly>[+-]?[0-9]+(\.[0-9]+)?|[+-]?\.[0-9]+))/', $remainingOperand, $match, PREG_UNMATCHED_AS_NULL) !== 1) {
+                throw new ParseFailureException();
+            }
+
+            $textSegments[] = new TextSegment(
+                $match['offset'] !== null ? (float) $match['offset'] : ($match['offsetOnly'] !== null ? (float) $match['offsetOnly'] : null),
+                $match['chars'] === null
+                    ? null
+                    : (
+                        str_starts_with($match['chars'], '<') && str_ends_with($match['chars'], '>')
+                        ? HexadecimalStringValue::fromValue($match['chars']) ?? throw new ParseFailureException()
+                        : LiteralStringValue::fromValue($match['chars']) ?? throw new ParseFailureException()
+                    ),
+            );
+            $offset += strlen($match[0]);
+        }
+
+        return new PositionedTextElement($textSegments, $textMatrix->multiplyWith($globalTransformationMatrix), $textState);
     }
 }

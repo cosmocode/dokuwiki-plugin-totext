@@ -3,10 +3,7 @@
 namespace dokuwiki\plugin\totext\Extractor;
 
 use dokuwiki\plugin\totext\Exception\ExtractionException;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryKey\DictionaryKey;
-use PrinsFrank\PdfParser\Document\Dictionary\DictionaryValue\TextString\TextStringValue;
 use PrinsFrank\PdfParser\Document\Document;
-use PrinsFrank\PdfParser\Document\Object\Decorator\InformationDictionary;
 use PrinsFrank\PdfParser\PdfParser;
 
 /**
@@ -87,8 +84,8 @@ class PdfExtractor implements ExtractorInterface
         $raw = [
             'Title' => $info->getTitle(),
             'Author' => $info->getAuthor(),
-            'Subject' => $this->infoText($info, DictionaryKey::SUBJECT),
-            'Keywords' => $this->infoText($info, DictionaryKey::KEYWORDS),
+            'Subject' => $info->getSubject(),
+            'Keywords' => $info->getKeywords(),
             'Created' => $info->getCreationDate()?->format(DATE_ATOM),
             'Modified' => $info->getModificationDate()?->format(DATE_ATOM),
             // "what produced this file": the Producer, or the Creator app
@@ -107,20 +104,5 @@ class PdfExtractor implements ExtractorInterface
             }
         }
         return $meta;
-    }
-
-    /**
-     * Read an Info-dictionary text-string value the decorator does not expose
-     * directly (Subject, Keywords).
-     *
-     * @param InformationDictionary $info the Info dictionary
-     * @param DictionaryKey $key the entry to read
-     * @return string|null the raw text, or null if absent
-     */
-    protected function infoText(InformationDictionary $info, DictionaryKey $key): ?string
-    {
-        return $info->getDictionary()
-            ->getValueForKey($info->document, $key, TextStringValue::class)
-            ?->getText();
     }
 }
