@@ -26,6 +26,9 @@ class PptxExtractor extends AbstractOoxmlExtractor
 
         $out = [];
         foreach ($slidePaths as $i => $slidePath) {
+            if ($this->textBudget <= 0) {
+                break;
+            }
             $xml = $this->readPart($slidePath);
             if ($xml === null) {
                 continue;

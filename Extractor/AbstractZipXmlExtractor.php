@@ -3,6 +3,7 @@
 namespace dokuwiki\plugin\totext\Extractor;
 
 use dokuwiki\plugin\totext\Exception\ExtractionException;
+use dokuwiki\Utf8\Clean;
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -25,8 +26,14 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
     /** maximum number of files and directories unpacked from one archive */
     protected const MAX_EXTRACTION_FILES = 10000;
 
+    /** maximum size in bytes of the extracted text, longer text is truncated */
+    protected const MAX_TEXT_SIZE = 10 * 1024 * 1024;
+
     /** @var string path to the temp dir the archive was extracted into */
     protected string $tempDir = '';
+
+    /** @var int number of bytes that appendText() can still add before the text limit is reached */
+    protected int $textBudget = 0;
 
     /**
      * Extract text from the already-unpacked archive (in $this->tempDir).
@@ -88,8 +95,9 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
             // each recorded so a failure in one never discards the other.
             $text = '';
             $textError = null;
+            $this->textBudget = static::MAX_TEXT_SIZE;
             try {
-                $text = $this->extractText();
+                $text = $this->cutText($this->extractText(), static::MAX_TEXT_SIZE);
             } catch (\Throwable $e) {
                 $textError = ExtractionException::wrap($e, "Failed to extract text from $path");
             }
@@ -188,7 +196,7 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
                 if ($key === null) {
                     continue;
                 }
-                $value = trim($reader->readString());
+                $value = trim($this->readElementText($reader));
                 if ($value === '') {
                     continue;
                 }
@@ -231,19 +239,19 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
             $out = '';
             $blocks = array_flip($blockElements);
             $tabs = array_flip($tabElements);
-            while ($reader->read()) {
+            while ($this->textBudget > 0 && $reader->read()) {
                 if ($reader->nodeType !== XMLReader::ELEMENT) {
                     continue;
                 }
                 $local = $reader->localName;
                 if ($local === $textElement) {
-                    $out .= $reader->readString();
+                    $this->appendText($out, $this->readElementText($reader));
                 } elseif (isset($blocks[$local])) {
                     if ($out !== '' && !str_ends_with($out, "\n")) {
-                        $out .= "\n";
+                        $this->appendText($out, "\n");
                     }
                 } elseif (isset($tabs[$local])) {
-                    $out .= "\t";
+                    $this->appendText($out, "\t");
                 }
             }
             return $out;
@@ -278,20 +286,20 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
             $out = '';
             $blocks = array_flip($blockElements);
             $tabs = array_flip($tabElements);
-            while ($reader->read()) {
+            while ($this->textBudget > 0 && $reader->read()) {
                 $nt = $reader->nodeType;
                 if ($nt === XMLReader::TEXT || $nt === XMLReader::CDATA || $nt === XMLReader::SIGNIFICANT_WHITESPACE) {
-                    $out .= $reader->value;
+                    $this->appendText($out, $reader->value);
                 } elseif ($nt === XMLReader::ELEMENT) {
                     $local = $reader->localName;
                     if (isset($blocks[$local])) {
                         // drop any indentation whitespace captured before the block
                         $out = rtrim($out, " \t");
                         if ($out !== '' && !str_ends_with($out, "\n")) {
-                            $out .= "\n";
+                            $this->appendText($out, "\n");
                         }
                     } elseif (isset($tabs[$local])) {
-                        $out .= "\t";
+                        $this->appendText($out, "\t");
                     }
                 }
             }
@@ -299,6 +307,70 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
         } finally {
             $reader->close();
         }
+    }
+
+    /**
+     * Read the text content of the current element and move the reader to its end.
+     *
+     * The reader stops on the closing element, so the caller does not visit
+     * nested elements again and reads nested text only once.
+     *
+     * @param XMLReader $reader positioned on an opening element
+     * @return string the text of the element and all its descendants
+     */
+    protected function readElementText(XMLReader $reader): string
+    {
+        if ($reader->isEmptyElement) {
+            return '';
+        }
+        $depth = $reader->depth;
+        $text = '';
+        while ($reader->read() && $reader->depth > $depth) {
+            $nt = $reader->nodeType;
+            if (
+                $nt === XMLReader::TEXT || $nt === XMLReader::CDATA ||
+                $nt === XMLReader::WHITESPACE || $nt === XMLReader::SIGNIFICANT_WHITESPACE
+            ) {
+                $text .= $reader->value;
+            }
+        }
+        return $text;
+    }
+
+    /**
+     * Append text to an output buffer, within the remaining text budget.
+     *
+     * When the text does not fit, it is cut at a character boundary and the
+     * budget is set to zero, so all further text is dropped.
+     *
+     * @param string $out the output buffer to append to
+     * @param string $text the text to append
+     * @return void
+     */
+    protected function appendText(string &$out, string $text): void
+    {
+        if (strlen($text) >= $this->textBudget) {
+            $text = $this->cutText($text, $this->textBudget);
+            $this->textBudget = 0;
+        } else {
+            $this->textBudget -= strlen($text);
+        }
+        $out .= $text;
+    }
+
+    /**
+     * Cut a UTF-8 string to a maximum byte length at a character boundary.
+     *
+     * @param string $text the UTF-8 text
+     * @param int $length the maximum length in bytes
+     * @return string the text, or its longest prefix that fits
+     */
+    protected function cutText(string $text, int $length): string
+    {
+        if (strlen($text) <= $length) {
+            return $text;
+        }
+        return substr($text, 0, Clean::correctIdx($text, $length));
     }
 
     /**

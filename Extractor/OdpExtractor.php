@@ -29,7 +29,7 @@ class OdpExtractor extends AbstractOdfExtractor
         try {
             $out = [];
             $slide = 0;
-            while ($reader->read()) {
+            while ($this->textBudget > 0 && $reader->read()) {
                 if ($reader->nodeType === XMLReader::ELEMENT && $reader->localName === 'page') {
                     $slide++;
                     $body = $this->extractPage($reader);
@@ -54,20 +54,20 @@ class OdpExtractor extends AbstractOdfExtractor
             return '';
         }
         $out = '';
-        while ($reader->read()) {
+        while ($this->textBudget > 0 && $reader->read()) {
             $nt = $reader->nodeType;
             $local = $reader->localName;
             if ($nt === XMLReader::TEXT || $nt === XMLReader::CDATA || $nt === XMLReader::SIGNIFICANT_WHITESPACE) {
-                $out .= $reader->value;
+                $this->appendText($out, $reader->value);
             } elseif ($nt === XMLReader::ELEMENT) {
                 if ($local === 'p' || $local === 'h' || $local === 'line-break') {
                     // drop any indentation whitespace captured before the block
                     $out = rtrim($out, " \t");
                     if ($out !== '' && !str_ends_with($out, "\n")) {
-                        $out .= "\n";
+                        $this->appendText($out, "\n");
                     }
                 } elseif ($local === 'tab') {
-                    $out .= "\t";
+                    $this->appendText($out, "\t");
                 }
             } elseif ($nt === XMLReader::END_ELEMENT && $local === 'page') {
                 break;
