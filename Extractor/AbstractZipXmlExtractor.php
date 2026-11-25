@@ -35,6 +35,9 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
     /** @var int number of bytes that appendText() can still add before the text limit is reached */
     protected int $textBudget = 0;
 
+    /** @var array<string, true>|null temp dirs to remove at shutdown, null until the shutdown function is registered */
+    protected static ?array $shutdownTempDirs = null;
+
     /**
      * Extract text from the already-unpacked archive (in $this->tempDir).
      *
@@ -53,18 +56,6 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
      * @return array<string, string> canonical key => value map
      */
     abstract protected function extractMetadata(): array;
-
-    /**
-     * Clean up any leftover temp dir when the instance is destroyed.
-     *
-     * extract() removes the temp dir promptly in its finally block; this acts
-     * as a safety net so a dir is still removed if the process dies (e.g. on a
-     * fatal error) before that block runs.
-     */
-    public function __destruct()
-    {
-        $this->cleanup();
-    }
 
     /** @inheritDoc */
     public function extract(string $path): ExtractionResult
@@ -377,7 +368,8 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
      * Create a private temporary directory for unpacking the archive.
      *
      * Uses DokuWiki's temp dir ($conf['tmpdir']) via the core io_mktmpdir()
-     * helper rather than the system temp dir.
+     * helper rather than the system temp dir. A shutdown function removes the
+     * directory if a fatal error stops the extraction before cleanup().
      *
      * @return string the created directory path
      * @throws ExtractionException if the directory cannot be created
@@ -388,14 +380,25 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
         if ($dir === false) {
             throw new ExtractionException('Could not create temp dir');
         }
+
+        // a fatal error skips finally blocks and destructors, but not shutdown functions
+        if (self::$shutdownTempDirs === null) {
+            self::$shutdownTempDirs = [];
+            register_shutdown_function(static function () {
+                foreach (array_keys(self::$shutdownTempDirs) as $tempDir) {
+                    io_rmdir($tempDir, true);
+                }
+            });
+        }
+        self::$shutdownTempDirs[$dir] = true;
+
         return $dir;
     }
 
     /**
      * Recursively remove the unpack temp dir and reset the tracking property.
      *
-     * Safe to call repeatedly and when no temp dir is set (the destructor and
-     * extract()'s finally block both call it).
+     * Safe to call repeatedly and when no temp dir is set.
      *
      * @return void
      */
@@ -405,6 +408,7 @@ abstract class AbstractZipXmlExtractor implements ExtractorInterface
             return;
         }
         io_rmdir($this->tempDir, true);
+        unset(self::$shutdownTempDirs[$this->tempDir]);
         $this->tempDir = '';
     }
 }
