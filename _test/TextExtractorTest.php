@@ -82,6 +82,15 @@ class TextExtractorTest extends DokuWikiTest
         $this->assertStringNotContainsString("\xFF", $text);
     }
 
+    public function testRemovesBytesThatAreInvalidInStrictUtf8()
+    {
+        $path = $this->tmp . '/overlong.txt';
+        // an overlong "/" and a UTF-16 surrogate are invalid UTF-8, the "ü" is valid
+        file_put_contents($path, "ü\xC0\xAFok\xED\xA0\x80ok");
+        $text = (new TextExtractor())->extract($path)->text;
+        $this->assertSame('üokok', $text);
+    }
+
     public function testEmptyFileYieldsEmptyString()
     {
         $path = $this->tmp . '/empty.txt';

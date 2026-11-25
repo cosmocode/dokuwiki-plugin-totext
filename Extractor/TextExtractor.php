@@ -26,12 +26,15 @@ class TextExtractor implements ExtractorInterface
             throw new ExtractionException("Could not read file: $path");
         }
 
-        // Ensure UTF-8: convert from Latin-1 if the bytes are not valid UTF-8,
-        // then sanitise any remaining stray bytes.
-        if (!Clean::isUtf8($data)) {
-            $data = Conversion::fromLatin1($data);
+        // Ensure UTF-8: remove bad bytes from UTF-8 like data, convert anything else from Latin-1.
+        // The cleanup takes quadratic time in older DokuWiki releases, so valid UTF-8 skips it.
+        if (!preg_match('//u', $data)) {
+            if (Clean::isUtf8($data)) {
+                $data = Clean::replaceBadBytes($data);
+            } else {
+                $data = Conversion::fromLatin1($data);
+            }
         }
-        $data = Clean::replaceBadBytes($data);
 
         // Normalise line endings.
         $data = str_replace(["\r\n", "\r"], "\n", $data);
